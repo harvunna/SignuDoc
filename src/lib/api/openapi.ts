@@ -420,8 +420,8 @@ export function buildOpenApiDocument(
     },
     info: {
       description:
-        "Create, send and track envelopes on a SignuDoc install. See docs/api.md in the SignuDoc repository.",
-      title: "SignuDoc API",
+        "Create, send and track envelopes with the Signly e-signature API.",
+      title: "Signly API",
       version: "1",
     },
     openapi: "3.1.0",
