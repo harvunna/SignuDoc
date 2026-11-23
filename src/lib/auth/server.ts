@@ -42,6 +42,7 @@ import { escapeHtml } from "../utils/html.ts";
 import { isRunningSetup } from "./setup-context.ts";
 import { signInEvents } from "./sign-in-events.ts";
 import {
+  isSsoEmailVerified,
   mayUsePassword,
   readPasswordSignInPolicy,
   readSsoConfig,
@@ -309,13 +310,12 @@ export function createAppAuth({
                 // A provider whose discovery cannot vouch for its ID tokens
                 // is left out rather than trusted unchecked.
                 requireIdTokenVerification: true,
-                // Microsoft Entra ID leaves email_verified out of its
-                // tokens. The organization's own directory is trusted for
-                // its addresses unless it says one is not verified.
+                // An address counts as verified only when the provider
+                // says so: a sign-in with a verified address is tied to the
+                // existing account with that address, so a missing claim
+                // must not count. See isSsoEmailVerified in sso.ts.
                 mapProfileToUser: (profile) => ({
-                  emailVerified:
-                    profile.email_verified !== false &&
-                    profile.email_verified !== "false",
+                  emailVerified: isSsoEmailVerified(profile),
                 }),
                 name: sso.name,
                 pkce: true,

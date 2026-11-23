@@ -4,7 +4,7 @@ import { ZodError } from "zod";
 import { getDb } from "@/lib/db/connection";
 import { logRouteError } from "@/lib/security/logging";
 import {
-  applyRateLimit,
+  applyPublicLinkRateLimit,
   buildRateLimitKey,
 } from "@/lib/security/route-controls";
 import { getClientIpAddress } from "@/lib/security/request";
@@ -29,15 +29,14 @@ const NO_STORE = { "cache-control": "private, no-store" };
 
 export async function POST(request: Request, context: FitRouteContext) {
   const { token } = await context.params;
-  const rateLimitResponse = await applyRateLimit({
+  const rateLimitResponse = await applyPublicLinkRateLimit({
     category: "signing_field_fit",
-    key: buildRateLimitKey([
-      "signing-field-fit",
-      token,
-      getClientIpAddress(request.headers) ?? "unknown",
-    ]),
+    // Per link, from wherever it is asked: each check measures the text
+    // with the document's fonts, so a link gets a fixed amount of that
+    // work however many addresses ask.
+    key: buildRateLimitKey(["signing-field-fit", token]),
     // Asked as the signer types, after each pause.
-    limit: 300,
+    limit: 200,
     request,
     windowMs: 10 * 60 * 1000,
   });

@@ -35,11 +35,12 @@ export default async function EnvelopeDetailPage({
   let initialState: "error" | "not-found" | undefined;
   let canDeleteFinished = false;
   let ownerLabel: string | undefined;
+  let ownerListView: "all" | "team" = "all";
   let scheduledDeletion: EnvelopeDeletionNotice | undefined;
 
   try {
     const session = await getAuthSession();
-    // Its sender's, or, for an administrator, anyone's.
+    // Its sender's, or, once sent, a teammate's or any administrator's.
     const access = session
       ? await resolveEnvelopeViewerAccess(session.user.id, id, getDb())
       : null;
@@ -55,6 +56,9 @@ export default async function EnvelopeDetailPage({
       detailRecord !== null &&
       session !== null &&
       (await isAdminUser(session.user.id, getDb()));
+    // Back to everyone's envelopes for an administrator, to the team's
+    // for a teammate.
+    ownerListView = canDeleteFinished ? "all" : "team";
 
     const scheduled = detailRecord
       ? await getScheduledEnvelopeDeletion(id, getDb())
@@ -81,6 +85,7 @@ export default async function EnvelopeDetailPage({
       initialState={initialState}
       key={id}
       ownerLabel={ownerLabel}
+      ownerListView={ownerListView}
       record={detailRecord ?? undefined}
       scheduledDeletion={scheduledDeletion}
     />

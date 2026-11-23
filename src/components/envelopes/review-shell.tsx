@@ -63,6 +63,8 @@ type ReviewSigner = {
   id: string;
   name: string;
   order: number;
+  /** An approver approves or rejects, with no fields. */
+  role?: "approver" | "signer";
   /** Signers who share a step sign at the same time. */
   step?: number;
   tint?: string;
@@ -352,18 +354,25 @@ export function ReviewShell({
                               style={{ backgroundColor: palette.color }}
                             />
                             Signer {signer.order}
+                            {signer.role === "approver" ? " · Approver" : ""}
                           </span>
                         </div>
 
-                        <p
-                          className={`mt-2 text-sm leading-6 ${
-                            signer.fieldSummaries.includes("Signature")
-                              ? "text-(--tertiary)"
-                              : "font-semibold text-(--danger)"
-                          }`}
-                        >
-                          {formatSignerFieldSummary(signer.fieldSummaries)}
-                        </p>
+                        {signer.role === "approver" ? (
+                          <p className="mt-2 text-sm leading-6 text-(--tertiary)">
+                            Approves or rejects the document. No fields.
+                          </p>
+                        ) : (
+                          <p
+                            className={`mt-2 text-sm leading-6 ${
+                              signer.fieldSummaries.includes("Signature")
+                                ? "text-(--tertiary)"
+                                : "font-semibold text-(--danger)"
+                            }`}
+                          >
+                            {formatSignerFieldSummary(signer.fieldSummaries)}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </li>
@@ -528,7 +537,14 @@ export function ReviewShell({
                 )
               : null
           }
-          signerCount={activeRecord.signers.length}
+          approverCount={
+            activeRecord.signers.filter((signer) => signer.role === "approver")
+              .length
+          }
+          signerCount={
+            activeRecord.signers.filter((signer) => signer.role !== "approver")
+              .length
+          }
           title={activeRecord.title}
         />
       ) : null}
@@ -537,6 +553,8 @@ export function ReviewShell({
 }
 
 type SendConfirmationDialogProps = {
+  /** Approvers in the signing order, who approve or reject. */
+  approverCount: number;
   deadlineDays: number;
   errorMessage: string | null;
   firstSignerName: string;
@@ -547,11 +565,25 @@ type SendConfirmationDialogProps = {
   onConfirm: () => void;
   /** Set when signers sign through the install's signing provider. */
   signatureType: string | null;
+  /** Signers in the signing order, not counting approvers. */
   signerCount: number;
   title: string;
 };
 
+/** "1 signer", "2 signers and 1 approver" and so on. */
+function describeSigningOrderPeople(
+  signerCount: number,
+  approverCount: number,
+): string {
+  const signers = `${signerCount} ${signerCount === 1 ? "signer" : "signers"}`;
+
+  return approverCount > 0
+    ? `${signers} and ${approverCount} ${approverCount === 1 ? "approver" : "approvers"}`
+    : signers;
+}
+
 function SendConfirmationDialog({
+  approverCount,
   deadlineDays,
   errorMessage,
   firstSignerName,
@@ -564,6 +596,8 @@ function SendConfirmationDialog({
   title,
 }: SendConfirmationDialogProps) {
   const [isPermittedUseConfirmed, setIsPermittedUseConfirmed] = useState(false);
+  const peopleCount = signerCount + approverCount;
+  const firstLabel = approverCount > 0 ? "person" : "signer";
 
   return (
     <Dialog
@@ -581,13 +615,13 @@ function SendConfirmationDialog({
             <DialogDescription asChild>
               <div className="space-y-3 text-sm leading-6 text-(--secondary)">
                 <p>
-                  &quot;{title}&quot; will be sent to {signerCount}{" "}
-                  {signerCount === 1 ? "signer" : "signers"}.{" "}
-                  {signerCount === 1
+                  &quot;{title}&quot; will be sent to{" "}
+                  {describeSigningOrderPeople(signerCount, approverCount)}.{" "}
+                  {peopleCount === 1
                     ? `${firstSignerName} will be notified immediately.`
                     : firstStepSize > 1
-                      ? `${firstSignerName} will be notified immediately, to sign at the same time.`
-                      : `The first signer (${firstSignerName}) will be notified immediately.`}{" "}
+                      ? `${firstSignerName} will be notified immediately, ${approverCount > 0 ? "to act" : "to sign"} at the same time.`
+                      : `The first ${firstLabel} (${firstSignerName}) will be notified immediately.`}{" "}
                   The request expires in {deadlineDays} days.
                 </p>
                 {signatureType ? (

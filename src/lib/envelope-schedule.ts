@@ -243,6 +243,9 @@ async function listSignersDueForReminder(
         ON s.envelope_id = e.id
         AND s.status = 'notified'
       WHERE e.status = 'sent'
+        -- Embedded envelopes get no reminders; left out here, before the
+        -- batch limit, so they cannot fill every batch.
+        AND e.delivery = 'email'
         AND e.reminder_interval_days IS NOT NULL
         AND (e.expires_at IS NULL OR e.expires_at > $1)
         AND GREATEST(

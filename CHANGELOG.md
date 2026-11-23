@@ -8,6 +8,317 @@ release says when it does.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-22
+
+People can now work as a team, seeing the envelopes their teammates send,
+and a sender can put approvers in the signing order, who approve or reject
+the document instead of signing it. This release changes the database: see
+the end of this entry.
+
+### Teams
+
+- Teams. An administrator makes teams in Settings and puts people on them.
+  People on a team see the envelopes their teammates have sent, read-only,
+  in a "My team" view on the dashboard, and can download their audit trail
+  and, once finished, the signed PDF and certificate. Drafts stay private,
+  and only the sender changes an envelope. Team changes and teammates'
+  views and downloads are recorded in the site audit trail. See
+  [docs/teams.md](docs/teams.md) (PR #158 by @MattJackson).
+
+### Approvers
+
+- Anyone in the signing order can be an approver instead of a signer: on
+  the signers page, pick "Approves or rejects it (no fields)". An approver
+  reviews the document and approves or rejects it. They have no fields and
+  nothing of theirs is stamped on the signed PDF. Approvers take their turn
+  in the steps like signers, and a rejection ends the envelope, as a decline
+  does (PR #159 by @MattJackson).
+- Invitations and reminders ask an approver to approve, not to sign. The
+  audit trail, the envelope page and the certificate show "Approved" and
+  "Rejected", and the certificate lists approvals on their own, so an
+  approval is never read as a signature. Certificates of envelopes without
+  approvers are unchanged.
+- Templates keep who approves, so do copies of an envelope and Send to
+  many. The API shows each person's `role` (`signer` or `approver`);
+  webhooks report an approval as `signer.signed` and a rejection as
+  `envelope.declined`. See [docs/signing-order.md](docs/signing-order.md).
+- Approvers are not offered in Part 11 mode, where an approval is an
+  electronic signature: make the approver a signer with the meaning
+  Approval instead. They cannot be combined with advanced or qualified
+  signatures through a signing provider either.
+- The send confirmation counts signers and approvers apart, and the public
+  verify page says how many approvers there were (PR #249).
+
+### Fixes
+
+- In Settings, a team added while the list of teams was still loading
+  could be hidden until the page was reloaded (PR #249).
+- A declined envelope's certificate now lists the checks the signer had
+  passed before declining, as it does for a signature.
+
+### Upgrading
+
+This release changes the database, in two migrations:
+
+- `20261121100000_teams.sql` adds the `teams` and `team_members` tables.
+- `20261121110000_approvers.sql` lets a signer row have the role
+  `approver`, adds the `approved` and `rejected` audit events, and stops a
+  field from being given to an approver. A copy of the app from before this
+  release still runs on the database, but leaves approvers out of the
+  signing order: roll back past it only with no approvers on envelopes out
+  for signature.
+
+On Vercel the production build applies the migrations. On other hosts, run
+`npm run db:migrate` as on every deploy.
+
+Thank you to @MattJackson, who built both headline features of this
+release. Teams draw a careful line: teammates can read and download but
+never change, drafts stay private, and every look is on the record.
+Approvers fit into the signing order without a second set of rules, are
+kept apart from signatures everywhere it counts, and stay out of Part 11
+and provider signatures where an approval would not hold up. They answered
+every review note quickly, too.
+
+## [0.8.0] - 2026-11-21
+
+An administrator can now write the words signers agree to before signing,
+and this release closes a set of security gaps found in a review of the
+code. Upgrading matters most for installs that use Part 11 mode, single
+sign-on or backups. This release changes the database: see the end of this
+entry.
+
+### Settings
+
+- An administrator can write the disclosure signers read and agree to before
+  signing, under Settings, Organization, "What signers agree to before
+  signing", or start from the standard text and edit it. Empty keeps the
+  standard text. A line starting with `## ` is a heading, and `{sender}` and
+  `{contact}` fill in who is asking and who to write to. Saving words of
+  their own first shows a notice that the standard text covers what the U.S.
+  E-SIGN Act requires, that changing it may make signatures invalid, and that
+  nothing in SignuDoc is legal advice; the administrator presses "I agree",
+  and that is recorded in the site audit trail. The version stored with each
+  signer's agreement follows the text, and their audit trail keeps the words
+  they read. The hosted service keeps the standard text (PR #193 by
+  @carefulcomputer).
+
+### Security
+
+- Single sign-on counts an email address as verified only when the identity
+  provider says so (`email_verified` set to true, or Microsoft Entra's
+  `xms_edov`). Before, a provider that left the claim out was trusted.
+- In Part 11 mode, an administrator's identity confirmation now holds the
+  name and email address that were confirmed, and it counts only while the
+  account still has both. Changing either one needs a new confirmation
+  before the person can sign. Sending refuses a signer name that does not
+  match the confirmed name, signatures are made in the confirmed name, and
+  each signature checks again.
+- Restoring a backup ends the sessions, sign-in codes, emailed signing codes,
+  signing links and open signing-provider sessions it brought back, so a
+  restore cannot bring an ended session or link back to life. Download links
+  keep working. Restoring an older backup also fills in the rows that later
+  migrations backfill.
+- A certificate seals the audit trail as it stands while the envelope is
+  held, so an event recorded at the same moment cannot be left out.
+- Wrong access codes are counted per signer and code over a week, across
+  every link and address: after 10, the signer has to wait or ask the sender
+  for a new code. Tries sent at the same moment cannot slip past the count.
+- Public signing and download links are limited to 1,000 requests per
+  address every 10 minutes, and the text-fit check is limited per link.
+- Off Vercel, the visitor's address is read from the end of
+  `X-Forwarded-For`, where the last trusted proxy put it, so a visitor
+  cannot choose the address that rate limits count against.
+- A PDF with more than 1,000 pages is refused at upload.
+- Sending refuses a dropdown whose box is too small to show its choices
+  readably, so the signer is never handed one they cannot read.
+- Failed sign-ins to addresses that have no account are recorded in the
+  site audit trail, up to 20 an hour per address.
+
+### Upgrading
+
+If you use Part 11 mode, people whose confirmation came before this release
+keep it: the migration records their current name and address as the
+confirmed ones. From then on, a change to either needs an administrator to
+confirm the person again.
+
+This release changes the database, in three migrations:
+
+- `20261119130000_consent_disclosure.sql` adds the
+  `app_settings.consent_disclosure` column. Until it has run, the setting
+  reads as empty and signers see the standard text.
+- `20261120100000_identity_verified_snapshot.sql` adds
+  `identity_verified_name` and `identity_verified_email` to the `user` table
+  and fills them for people already confirmed.
+- `20261120110000_repair_edited_migrations.sql` adds columns that a database
+  which ran an early copy of three 0.5 and 0.7 migrations lacks (a preview
+  deployment sharing the production database, for one). On a database that
+  ran the final copies it changes nothing.
+
+On Vercel the production build applies the migrations. On other hosts, run
+`npm run db:migrate` as on every deploy.
+
+Thank you to @carefulcomputer, who built the editable consent disclosure in
+#193: the setting, the version that follows the text, and the care to keep
+the hosted service on the standard words. It gave this release its headline
+feature, and the E-SIGN notice was added on top of their work.
+
+## [0.7.0] - 2026-11-20
+
+A sender can now send one template to many people at once from a CSV. Two
+signing fixes from outside contributors are in too. This release changes the
+database: see the end of this entry.
+
+### Templates
+
+- **Send to many** on a template: upload or paste a CSV of names and email
+  addresses and send one envelope per row, with a preview that flags missing
+  or invalid addresses, duplicate rows and batches over 200 before anything
+  is created. Each row is sent on its own, so one failure does not take the
+  others with it. Confirming is safe to retry: the same batch returns its
+  stored results instead of sending again. After sending, the results can be
+  downloaded as a CSV. In Part 11 mode, a row is skipped when the signer
+  does not have a verified, identity-checked account (PR #37 by
+  @mvanhorn).
+
+### Signing
+
+- A required dropdown whose choices are all too long for their box no longer
+  stops the signer from finishing. The signer cannot shorten the sender's
+  text, so the choice is taken and drawn whole in the box, however small.
+  Typed Text and Number answers are still checked as before (PR #196 by
+  @RayFernando1337).
+- A page with no fields for the signer stays readable. The notice that
+  covered the whole page is gone, and the toolbar says "No fields on this
+  page" instead (#182, PR #194 by @HimanshuMahto).
+
+Thank you to everyone who helped with this release. @mvanhorn built Send to
+many and worked through every review round until a lost connection, a slow
+retry or an edited draft could no longer send anyone a second envelope.
+@RayFernando1337 found the stuck dropdown and explained exactly why a signer
+could not get past it, @chrisremboldt reported the notice that covered pages
+without fields in #182, and @HimanshuMahto moved it out of the way and added
+a test that checks nothing covers the document.
+
+This release changes the database, in three migrations:
+`20261118090000_bulk_send_batches.sql`,
+`20261118120000_bulk_send_row_reason_cleared_with_envelope.sql` and
+`20261120090000_bulk_send_skipped_rows.sql`. They add the
+`bulk_send_batches` and `bulk_send_batch_rows` tables, so a confirmed batch
+keeps its results and a retry does not send the same envelopes again, and a
+trigger that clears a stored failure reason when its envelope is deleted. On
+Vercel the production build applies the migrations. On other hosts, run
+`npm run db:migrate` as on every deploy.
+
+## [0.6.0] - 2026-11-20
+
+Other apps can now work with SignuDoc: an API with keys, signed webhooks, and
+signing inside another site's page. Signers can also sign at the same time,
+and the sender can open the document while it is out for signature. This
+release changes the database: see the end of this entry.
+
+### API
+
+- API keys: an administrator can make keys under Settings, Organization, API
+  keys, for another app to use the SignuDoc API. A key is shown once, only
+  its hash is stored, and it acts as the administrator who made it. Keys can
+  be read-only, can expire, and stop working when revoked or when their
+  administrator stops being one. `GET /api/v1/me` checks a key works. See
+  [docs/api.md](docs/api.md) (#43, PR #44).
+- API endpoints under `/api/v1`: create an envelope from a PDF with its
+  signers, copy recipients and fields, and send it, in one call (all or
+  nothing, safe to retry with an `Idempotency-Key`); send, void, remind and
+  delete; list and read envelopes and their audit trail; download the signed
+  PDF and the certificate; start an envelope from a template; upload PDFs
+  over 4 MB straight to Blob. `GET /api/v1/openapi.json` describes it all
+  (PR #45).
+- Webhooks: an administrator can add endpoints under Settings,
+  Organization, Webhooks, to be told when an envelope is sent, viewed,
+  signed, completed, declined, voided or expires. Deliveries are signed the
+  Standard Webhooks way, written in the same transaction as the change they
+  report, and retried for about two and a half days. Settings shows a
+  delivery log with "Send again", a test button and secret rotation;
+  `GET /api/v1/webhook-deliveries` lets an app catch up. A new daily cron
+  job, `/api/internal/webhooks`, sends retries that are due (PR #46).
+- Embedded signing: an app can send an envelope with
+  `"delivery": "embedded"` and show the signing page in a frame on its own
+  site, from a link it asks for at
+  `POST /api/v1/envelopes/{id}/signers/{signerId}/embed-link`. No invitations
+  are emailed. Only sites an administrator lists under Settings,
+  Organization, Embedded signing can frame the page, and the frame tells
+  the app with `postMessage` when the signer signs or declines. The
+  certificate of completion says the signer was identified by the app
+  (PR #48).
+- For installs where people sign in only through single sign-on, the API
+  guide explains that removing someone at the identity provider leaves the
+  keys they made working, and how to stop them when that person leaves
+  (from @seanGSISG in #43).
+
+### Signing
+
+- Signers can sign at the same time. On Add signers, "Sign at the same time
+  as Signer N" puts signers in one step: everyone in a step is invited when
+  it starts and can sign in any order, and the next step starts once they
+  have all signed. Steps and one-after-another signers can be mixed.
+  Reminders, deadline changes, the expiry notice and voiding cover everyone
+  whose turn it is, and the certificate numbers signers by step. Part 11
+  mode and advanced or qualified signatures keep one signer after another.
+  See [Signing order](docs/signing-order.md) (#85, PR #157 by @MattJackson,
+  carried in PR #190).
+- An envelope can have up to 25 signers instead of 10, and
+  `MAX_SIGNERS_PER_ENVELOPE` sets any limit from 1 to 100 (PR #157).
+- A browser test now checks that a long typed signature keeps the signature
+  dialog and its buttons on a phone screen. PR #168 fixed this in 0.5.2
+  (#112, PR #187).
+
+### Sending
+
+- While an envelope is out for signature, and after it is declined, voided
+  or expired, its page has a View document button, and its first-page
+  picture opens the document as it was sent, in a new tab. An administrator
+  opening another member's document is recorded in the site audit trail
+  (#87, PR #188).
+- A field save from an older Place fields page, such as the save sent on
+  the way out that arrives late, or one from a second tab, is refused with a
+  request to reload, instead of overwriting newer fields (PR #186, a
+  follow-up to #165).
+
+### Settings and docs
+
+- With Part 11 mode on, "Who can create an account" says that Part 11
+  signers need an account whose identity an administrator has confirmed, so
+  the sign-up rule must let them make one (#107, PR #187).
+- The Part 11 change-control guide describes the numbered releases, with
+  their tag, source archive, SBOM and checksums (#101, PR #187).
+- The development guide explains how to run a production build on your own
+  computer with email capture (#114, PR #183 by @Chirag0401, carried in
+  PR #187).
+- The README covers sign-in security, backups, the administrator features
+  and the API, with new screenshots (PRs #189 and #195).
+
+Thank you to everyone who helped with this release. @azshaw asked for the
+API, webhooks and embedded signing in #43, and set out in four clear parts
+what an app needs, down to letting chosen sites frame the signing page, which
+is how embedded signing works. @steven-khimba, @mattwpickles and @seanGSISG
+told us what they would build with it, and @seanGSISG's note on single
+sign-on is now in the API guide. @MattJackson built signing at the same time,
+which @melsom123 asked for. @infoivy asked for View document, @Chirag0401
+wrote the guide to local production builds, and @coygeek reported four more
+careful issues.
+
+This release changes the database, in eight migrations:
+`20261118090000_api_keys.sql`, `20261118100000_api_envelopes.sql`,
+`20261118100500_api_idempotency_resource.sql`,
+`20261118110000_webhooks.sql`, `20261118120000_embedded_signing.sql`,
+`20261118120500_embed_link_api_key.sql`, `20261119090000_signing_steps.sql`
+and `20261119120000_fields_revision.sql`. They add the `api_keys`,
+`api_idempotency`, `webhook_endpoints`, `webhook_deliveries` and
+`embed_allowed_origins` tables and nine columns on envelopes and signers.
+Every signer already in an envelope gets the step of their place in the
+order, so envelopes out for signature carry on as before. On Vercel the
+production build applies the migrations. On other hosts, run
+`npm run db:migrate` as on every deploy, and if you use webhooks, have your
+scheduler call `/api/internal/webhooks` once a day too.
+
 ## [0.5.2] - 2026-11-19
 
 Twenty-four bug fixes. Seventeen fix reported issues (sixteen from @coygeek,
@@ -429,6 +740,10 @@ checked against the real services:
 
 SignuDoc is software, not legal advice. See the README's legal disclaimer.
 
+[0.9.0]: https://github.com/NYLLON-SOFTWARE/SignuDoc/releases/tag/v0.9.0
+[0.8.0]: https://github.com/NYLLON-SOFTWARE/SignuDoc/releases/tag/v0.8.0
+[0.7.0]: https://github.com/NYLLON-SOFTWARE/SignuDoc/releases/tag/v0.7.0
+[0.6.0]: https://github.com/NYLLON-SOFTWARE/SignuDoc/releases/tag/v0.6.0
 [0.5.2]: https://github.com/NYLLON-SOFTWARE/SignuDoc/releases/tag/v0.5.2
 [0.5.1]: https://github.com/NYLLON-SOFTWARE/SignuDoc/releases/tag/v0.5.1
 [0.5.0]: https://github.com/NYLLON-SOFTWARE/SignuDoc/releases/tag/v0.5.0

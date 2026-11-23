@@ -55,7 +55,7 @@ export async function GET(
   const { id } = await context.params;
 
   try {
-    // Its sender's, or any envelope for an administrator.
+    // Its sender's, or, once sent, a teammate's or any administrator's.
     const access = await resolveEnvelopeViewerAccess(
       session.user.id,
       id,
@@ -165,12 +165,23 @@ export async function PUT(
     }
 
     // An administrator's browser draws a missing picture too, and keeps it
-    // for everyone, so it is not drawn again on every visit.
+    // for everyone, so it is not drawn again on every visit. A teammate's
+    // browser draws one for itself but cannot keep it: the picture is
+    // checked to be a JPEG, not to be this document, and whoever stores it
+    // first decides what everyone sees, which a teammate with read-only
+    // access should not.
     const access = await resolveEnvelopeViewerAccess(
       session.user.id,
       id,
       getDb(),
     );
+
+    if (access && !access.viewerIsOwner && !access.viewerIsAdmin) {
+      return NextResponse.json(
+        { error: "Only the sender can save this thumbnail." },
+        { headers: privateNoStore, status: 403 },
+      );
+    }
 
     await saveEnvelopeThumbnailForUser(
       access?.ownerUserId ?? session.user.id,

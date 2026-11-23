@@ -632,6 +632,15 @@ async function deleteAccountRows(
     [userId],
   );
 
+  // The account's API keys go with its row below. revokeApiKey locks a key
+  // row and then the audit chain, so the key rows are taken here, before
+  // the audit event: in the other order a revoke at the same moment and
+  // this delete would each hold what the other waits for.
+  await database.query(
+    `SELECT id FROM api_keys WHERE user_id = $1 FOR UPDATE`,
+    [userId],
+  );
+
   await recordSystemAuditEvent(
     {
       actorEmail: null,

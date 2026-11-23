@@ -27,6 +27,12 @@ export type AppSettings = {
   allowedEmailDomains: string[];
   /** The install's own color as "#rrggbb", or null for the default. */
   brandColor: string | null;
+  /**
+   * The administrator's own words for what a signer reads and agrees to
+   * before signing, or null for the built-in disclosure. See
+   * electronic-records-disclosure.ts.
+   */
+  consentDisclosure: string | null;
   emailReadyAt: number | null;
   /**
    * A short hash of the install's logo, or null when it has none. The logo
@@ -98,6 +104,7 @@ export type SetupRequiredDecision = {
 type AppSettingsRow = {
   allowed_email_domains: string[] | null;
   brand_color: string | null;
+  consent_disclosure: string | null;
   email_ready_at: number | null;
   logo_hash: string | null;
   organization_name: string | null;
@@ -138,6 +145,7 @@ const LATER_SETTINGS_COLUMNS = [
   ["part11_mode"], // 20261115090000_part11_mode
   ["require_two_factor"], // 20261117090000_sign_in_security
   ["session_idle_minutes", "session_max_hours"], // 20261117100000_session_controls
+  ["consent_disclosure"], // 20261119130000_consent_disclosure
 ] as const;
 
 type LaterSettingsColumn = (typeof LATER_SETTINGS_COLUMNS)[number][number];
@@ -162,6 +170,7 @@ const SETTINGS_COLUMNS = settingsColumnsAfter(LATER_SETTINGS_COLUMNS.length);
 const UNSET_SETTINGS: AppSettings = {
   allowedEmailDomains: [],
   brandColor: null,
+  consentDisclosure: null,
   emailReadyAt: null,
   logoVersion: null,
   organizationName: null,
@@ -240,6 +249,7 @@ function mapSettingsRow(row: StoredSettingsRow): AppSettings {
   return {
     allowedEmailDomains: row.allowed_email_domains ?? [],
     brandColor: row.brand_color ?? null,
+    consentDisclosure: row.consent_disclosure ?? null,
     emailReadyAt: row.email_ready_at,
     logoVersion: row.logo_hash ?? null,
     organizationName: row.organization_name,
@@ -323,10 +333,13 @@ export function resolveSettings(
 ): ResolvedSettings {
   const emailEnv = getEnv(env).email;
   const settings = stored ?? UNSET_SETTINGS;
+  const hosted = isHostedMode(env);
 
   return {
     ...settings,
-    hosted: isHostedMode(env),
+    // The hosted service shows its own disclosure whatever is stored.
+    consentDisclosure: hosted ? null : settings.consentDisclosure,
+    hosted,
     senderAddress: emailEnv.senderAddress ?? settings.senderAddress,
     senderAddressFromEnv: emailEnv.senderAddress !== undefined,
     supportAddress: emailEnv.supportAddress ?? settings.supportAddress,
@@ -420,10 +433,11 @@ async function saveSettingsLocked(
         require_two_factor,
         session_idle_minutes,
         session_max_hours,
+        consent_disclosure,
         created_at,
         updated_at
       )
-      values (true, $1, $2, $3, $4, $5, $6, $7, $8, $9, $11, $12, $13, $14, $15, $16, $10, $10)
+      values (true, $1, $2, $3, $4, $5, $6, $7, $8, $9, $11, $12, $13, $14, $15, $16, $17, $10, $10)
       on conflict (id) do update set
         allowed_email_domains = excluded.allowed_email_domains,
         email_ready_at = excluded.email_ready_at,
@@ -440,6 +454,7 @@ async function saveSettingsLocked(
         require_two_factor = excluded.require_two_factor,
         session_idle_minutes = excluded.session_idle_minutes,
         session_max_hours = excluded.session_max_hours,
+        consent_disclosure = excluded.consent_disclosure,
         updated_at = excluded.updated_at
       returning ${SETTINGS_COLUMNS}
     `,
@@ -460,6 +475,7 @@ async function saveSettingsLocked(
       next.requireTwoFactor,
       next.sessionIdleMinutes,
       next.sessionMaxHours,
+      next.consentDisclosure,
     ],
   );
 

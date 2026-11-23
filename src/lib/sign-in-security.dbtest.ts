@@ -9,6 +9,7 @@ import type { createAppAuth as CreateAppAuth } from "./auth/server.ts";
 import { replaceDbPoolForTests } from "./db/connection.ts";
 import { openTestDatabase } from "./db/test-database.ts";
 import { clearRateLimitStoreForTests } from "./security/rate-limit.ts";
+import { UNKNOWN_ADDRESS_FAILURES_RECORDED_PER_HOUR } from "./auth/sign-in-events.ts";
 import {
   listSystemAuditEvents,
   verifySystemAuditChain,
@@ -304,6 +305,27 @@ test("an address with no account is stopped the same way", async () => {
 
   assert.equal(locked.status, 429);
   assert.equal(locked.payload?.code, "SIGN_IN_LOCKED");
+});
+
+test("tries at made-up addresses from one place are recorded only up to an hourly number", async () => {
+  for (
+    let attempt = 0;
+    attempt < UNKNOWN_ADDRESS_FAILURES_RECORDED_PER_HOUR + 5;
+    attempt += 1
+  ) {
+    await signIn(
+      `nobody-${String(attempt)}@acme.com`,
+      "not the right password!!",
+    );
+  }
+
+  const failures = await events("sign_in_failed");
+
+  assert.ok(failures.length > 0);
+  assert.ok(
+    failures.length <= UNKNOWN_ADDRESS_FAILURES_RECORDED_PER_HOUR,
+    String(failures.length),
+  );
 });
 
 test("a sign-in that works forgets the wrong passwords before it", async () => {

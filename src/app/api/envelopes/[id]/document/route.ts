@@ -10,6 +10,7 @@ import { resolveEnvelopeViewerAccess } from "@/lib/envelope-access";
 import { logRouteError } from "@/lib/security/logging";
 import { getClientIpAddress, getRequestPathname } from "@/lib/security/request";
 import { buildContentDisposition } from "@/lib/services/storage";
+import { recordSystemAuditEvent } from "@/lib/services/system-audit";
 
 type EnvelopeDocumentRouteContext = {
   params: Promise<{
@@ -31,7 +32,7 @@ export async function GET(
   const { id } = await context.params;
 
   try {
-    // Its sender's, or any envelope for an administrator.
+    // Its sender's, or, once sent, a teammate's or any administrator's.
     const access = await resolveEnvelopeViewerAccess(
       session.user.id,
       id,
@@ -42,6 +43,27 @@ export async function GET(
       id,
       { database: getDb() },
     );
+
+    if (access && !access.viewerIsOwner) {
+      // An administrator or a teammate opening someone else's document is
+      // on record in the install's audit trail, as a download of its files
+      // is. No record, no file.
+      await recordSystemAuditEvent({
+        actorEmail: session.user.email,
+        actorUserId: session.user.id,
+        event: "envelope_file_downloaded",
+        ipAddress: getClientIpAddress(request.headers),
+        metadata: {
+          envelopeId: id,
+          file: "original",
+          ownerEmail: access.ownerEmail,
+          ownerUserId: access.ownerUserId,
+        },
+        targetUserId: access.ownerUserId,
+        userAgent: request.headers.get("user-agent"),
+      });
+    }
+
     const responseBody = document.body.slice().buffer as ArrayBuffer;
 
     return new Response(responseBody, {
@@ -53,6 +75,7 @@ export async function GET(
         ),
         "content-length": String(document.contentLength),
         "content-type": document.contentType,
+        "x-content-type-options": "nosniff",
       },
       status: 200,
     });

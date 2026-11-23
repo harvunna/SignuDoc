@@ -13,8 +13,29 @@ import { PageHeader } from "@/components/shared/page-header";
 
 export type DashboardShellState = "default" | "empty" | "error";
 
-/** An administrator's dashboard: their own envelopes, or everyone's. */
-export type DashboardView = "all" | "mine";
+/**
+ * Whose envelopes the dashboard lists: one's own, one's teams' too, or, for
+ * an administrator, everyone's.
+ */
+export type DashboardView = "all" | "mine" | "team";
+
+const dashboardViews: readonly DashboardView[] = ["mine", "team", "all"];
+
+const viewLabels: Record<DashboardView, string> = {
+  all: "Everyone's",
+  mine: "Mine",
+  team: "My team",
+};
+
+/** The view named in the address, or one's own envelopes. */
+export function parseDashboardView(value: string): DashboardView {
+  return dashboardViews.find((view) => view === value) ?? "mine";
+}
+
+/** The dashboard's address for one view. */
+export function dashboardViewHref(view: DashboardView): string {
+  return view === "mine" ? "/dashboard" : `/dashboard?view=${view}`;
+}
 
 /** Links to the pages before and after this one, when there are any. */
 export type DashboardPagination = {
@@ -68,8 +89,10 @@ const statusPillClasses: Record<EnvelopeStatus, string> = {
 
 type DashboardDocumentsHeaderProps = {
   interactive?: boolean;
-  /** Shown to administrators only. */
+  /** Shown when there is more than one view to choose from. */
   view?: DashboardView;
+  /** The views this person can choose from. */
+  views?: readonly DashboardView[];
 };
 
 type DashboardDocumentsPanelProps = {
@@ -105,6 +128,7 @@ type ErrorBannerProps = {
 export function DashboardDocumentsHeader({
   interactive = true,
   view,
+  views = [],
 }: DashboardDocumentsHeaderProps) {
   const label = (
     <>
@@ -130,28 +154,31 @@ export function DashboardDocumentsHeader({
         description={
           view === "all"
             ? "Every envelope in your organization, whoever sent it."
-            : documentsDescription
+            : view === "team"
+              ? "Your envelopes, and the ones your teammates have sent."
+              : documentsDescription
         }
-        title={view === "all" ? "All envelopes" : "Documents"}
+        title={
+          view === "all"
+            ? "All envelopes"
+            : view === "team"
+              ? "Team envelopes"
+              : "Documents"
+        }
       />
-      {view && interactive ? (
+      {view && interactive && views.length > 1 ? (
         <nav aria-label="Whose envelopes" className="segmented self-start">
-          <Link
-            aria-current={view === "mine" ? "page" : undefined}
-            className="segmented-item"
-            data-active={view === "mine"}
-            href="/dashboard"
-          >
-            Mine
-          </Link>
-          <Link
-            aria-current={view === "all" ? "page" : undefined}
-            className="segmented-item"
-            data-active={view === "all"}
-            href="/dashboard?view=all"
-          >
-            Everyone&apos;s
-          </Link>
+          {views.map((option) => (
+            <Link
+              aria-current={view === option ? "page" : undefined}
+              className="segmented-item"
+              data-active={view === option}
+              href={dashboardViewHref(option)}
+              key={option}
+            >
+              {viewLabels[option]}
+            </Link>
+          ))}
         </nav>
       ) : null}
     </>
@@ -214,8 +241,8 @@ export function DashboardDocumentsPanel({
         {/* Typing narrows what is shown; Enter searches every envelope,
             not only this page. */}
         <SearchForm interactive={interactive}>
-          {view === "all" ? (
-            <input name="view" type="hidden" value="all" />
+          {view && view !== "mine" ? (
+            <input name="view" type="hidden" value={view} />
           ) : null}
           <label className="flex min-h-[2.625rem] w-full items-center gap-2.5 rounded-xl bg-white px-3.5 text-(--tertiary) transition focus-within:ring-3 focus-within:ring-ring/50">
             <SearchIcon aria-hidden="true" className="size-4 shrink-0" />

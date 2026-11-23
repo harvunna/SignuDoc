@@ -1,16 +1,23 @@
 import { type DbExecutor, getDb, queryOne } from "./db/connection.ts";
 
 // Whose envelope a signed-in account is looking at. Its sender sees it, as
-// before; an administrator sees every envelope in the install that has
-// been sent, to read, download and, once it is finished, delete. A draft
-// stays its sender's own until it is sent. Everything else that changes an
-// envelope (sending, voiding, reminders, editing) stays with its sender.
+// before. Someone on a team with the sender sees it once it has been sent,
+// to read and download. An administrator sees every envelope in the
+// install that has been sent, to read, download and, once it is finished,
+// delete. A draft stays its sender's own until it is sent. Everything else
+// that changes an envelope (sending, voiding, reminders, editing) stays
+// with its sender.
 
 export type EnvelopeViewerAccess = {
   ownerEmail: string;
   ownerName: string | null;
   ownerUserId: string;
-  /** False when an administrator is looking at someone else's envelope. */
+  /** Whether the viewer is an administrator of the install. */
+  viewerIsAdmin: boolean;
+  /**
+   * False when an administrator, or someone on a team with the sender, is
+   * looking at someone else's envelope.
+   */
   viewerIsOwner: boolean;
 };
 
@@ -18,14 +25,35 @@ type AccessRow = {
   ownerEmail: string;
   ownerName: string | null;
   ownerUserId: string;
+  sharesTeam: boolean;
   status: string;
   viewerRole: string | null;
 };
 
 /**
- * The envelope's sender, when `viewerUserId` may see it: as its sender, or
- * as an administrator. Null when the envelope does not exist or is not
- * theirs to see, which callers report as "not found".
+ * SQL that is true when the account whose id is the parameter `viewer`
+ * (for example "$1") is on a team with the sender of the envelope row
+ * named by `alias`.
+ */
+export function sharesTeamCondition(
+  viewer: string,
+  alias = "envelopes",
+): string {
+  return `EXISTS (
+    SELECT 1
+    FROM team_members viewer_membership
+    JOIN team_members owner_membership
+      ON owner_membership.team_id = viewer_membership.team_id
+    WHERE viewer_membership.user_id = ${viewer}
+      AND owner_membership.user_id = ${alias}.user_id
+  )`;
+}
+
+/**
+ * The envelope's sender, when `viewerUserId` may see it: as its sender, as
+ * someone on a team with them, or as an administrator. Null when the
+ * envelope does not exist or is not theirs to see, which callers report as
+ * "not found".
  */
 export async function resolveEnvelopeViewerAccess(
   viewerUserId: string,
@@ -40,7 +68,8 @@ export async function resolveEnvelopeViewerAccess(
         owner.email AS "ownerEmail",
         owner.name AS "ownerName",
         e.status,
-        (SELECT role FROM public."user" WHERE id = $2) AS "viewerRole"
+        (SELECT role FROM public."user" WHERE id = $2) AS "viewerRole",
+        ${sharesTeamCondition("$2", "e")} AS "sharesTeam"
       FROM envelopes e
       JOIN public."user" owner ON owner.id = e.user_id
       WHERE e.id = $1
@@ -54,11 +83,11 @@ export async function resolveEnvelopeViewerAccess(
 
   const viewerIsOwner = row.ownerUserId === viewerUserId;
 
-  // Someone else's envelope only for an administrator, and never their
-  // draft.
+  // Someone else's envelope only for an administrator or a teammate, and
+  // never their draft.
   if (
     !viewerIsOwner &&
-    (row.viewerRole !== "admin" || row.status === "draft")
+    ((row.viewerRole !== "admin" && !row.sharesTeam) || row.status === "draft")
   ) {
     return null;
   }
@@ -67,11 +96,12 @@ export async function resolveEnvelopeViewerAccess(
     ownerEmail: row.ownerEmail,
     ownerName: row.ownerName,
     ownerUserId: row.ownerUserId,
+    viewerIsAdmin: row.viewerRole === "admin",
     viewerIsOwner,
   };
 }
 
-/** How an administrator sees who sent an envelope. */
+/** How someone other than the sender sees who sent an envelope. */
 export function formatEnvelopeOwner(
   access: Pick<EnvelopeViewerAccess, "ownerEmail" | "ownerName">,
 ): string {

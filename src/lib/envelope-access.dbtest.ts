@@ -76,6 +76,7 @@ test("the sender sees their own envelope", async () => {
       ownerEmail: sender.email,
       ownerName: "Sam Sender",
       ownerUserId: sender.userId,
+      viewerIsAdmin: false,
       viewerIsOwner: true,
     },
   );
@@ -92,6 +93,7 @@ test("an administrator sees another member's envelope, and whose it is", async (
       ownerEmail: sender.email,
       ownerName: "Sam Sender",
       ownerUserId: sender.userId,
+      viewerIsAdmin: true,
       viewerIsOwner: false,
     },
   );

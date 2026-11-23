@@ -23,7 +23,11 @@ type AuditResponse = {
 const EVENT_LABELS: Record<SystemAuditEvent["event"], string> = {
   account_closure_requested: "Account closure requested",
   account_deleted: "Account deleted",
+  api_key_created: "API key created",
+  api_key_revoked: "API key revoked",
   email_domain_changed: "Email domain changed",
+  embed_origin_added: "Site allowed to embed signing",
+  embed_origin_removed: "Site no longer allowed to embed signing",
   envelope_deleted: "Finished envelope deleted",
   envelope_deletion_cancelled: "Envelope deletion cancelled",
   envelope_deletion_scheduled: "Envelope deletion scheduled",
@@ -44,11 +48,19 @@ const EVENT_LABELS: Record<SystemAuditEvent["event"], string> = {
   signed_out: "Signed out",
   signing_locked: "Signing locked",
   signing_unlocked: "Signing unlocked",
+  team_created: "Team made",
+  team_deleted: "Team deleted",
+  team_member_added: "Added to a team",
+  team_member_removed: "Removed from a team",
+  team_updated: "Team changed",
   two_factor_backup_codes_regenerated: "New backup codes made",
   two_factor_disabled: "Two-step sign-in turned off",
   two_factor_enabled: "Two-step sign-in turned on",
   two_factor_requirement_changed: "Two-step sign-in requirement changed",
   two_factor_reset: "Two-step sign-in reset by an administrator",
+  webhook_endpoint_changed: "Webhook endpoint changed",
+  webhook_endpoint_created: "Webhook endpoint added",
+  webhook_endpoint_deleted: "Webhook endpoint removed",
 };
 
 const SIGN_IN_FAILURE_REASONS: Record<string, string> = {
@@ -98,6 +110,49 @@ function describeEvent(event: SystemAuditEvent): string {
       return metadata.action === "removed" ? "Removed" : "Replaced";
     case "email_domain_changed":
       return typeof metadata.domain === "string" ? metadata.domain : "";
+    case "api_key_created":
+    case "api_key_revoked":
+      return [
+        typeof metadata.name === "string" ? metadata.name : null,
+        typeof metadata.prefix === "string" ? `${metadata.prefix}…` : null,
+        metadata.reason === "role_removed"
+          ? "owner is no longer an administrator"
+          : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+    case "embed_origin_added":
+    case "embed_origin_removed":
+      return typeof metadata.origin === "string" ? metadata.origin : "";
+    case "webhook_endpoint_created":
+    case "webhook_endpoint_changed":
+    case "webhook_endpoint_deleted":
+      return [
+        typeof metadata.url === "string" ? metadata.url : null,
+        Array.isArray(metadata.events)
+          ? `events: ${metadata.events.filter((type) => typeof type === "string").join(", ")}`
+          : null,
+        metadata.secretRotated === true ? "new signing secret" : null,
+        metadata.enabled === false
+          ? "turned off"
+          : metadata.enabled === true
+            ? "turned on"
+            : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+    case "team_created":
+    case "team_deleted":
+    case "team_updated":
+      return typeof metadata.teamName === "string" ? metadata.teamName : "";
+    case "team_member_added":
+    case "team_member_removed":
+      return [
+        typeof metadata.teamName === "string" ? metadata.teamName : null,
+        target,
+      ]
+        .filter(Boolean)
+        .join(": ");
     case "envelope_deleted":
       return [
         typeof metadata.title === "string" ? `"${metadata.title}"` : null,
@@ -142,6 +197,7 @@ function describeEvent(event: SystemAuditEvent): string {
 const downloadedFileLabels: Record<string, string> = {
   audit_trail: "audit trail",
   evidence: "certificate",
+  original: "document as sent",
   signed: "signed PDF",
 };
 

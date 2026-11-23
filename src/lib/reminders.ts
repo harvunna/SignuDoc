@@ -29,7 +29,11 @@ import {
   isEmailNotConnectedError,
   type EmailService,
 } from "./services/email.ts";
-import { buildDeadlineLine } from "./services/signing-invitation-email.ts";
+import {
+  buildDeadlineLine,
+  describeRequestedAction,
+} from "./services/signing-invitation-email.ts";
+import { isEmbeddedEnvelope } from "./embedding.ts";
 import { withUserEmailLegalFooter } from "./services/email-legal-footer.ts";
 import {
   formatReminderAvailableAt,
@@ -43,6 +47,7 @@ import {
 import { escapeHtml } from "./utils/html.ts";
 
 type ReminderEnvelopeRow = {
+  delivery: "email" | "embedded";
   expiresAt: number | null;
   id: string;
   ownerEmail: string;
@@ -61,6 +66,7 @@ type ReminderSignerRow = {
   lastNotifiedAt: number | null;
   lastNudgedAt: number | null;
   name: string;
+  role: string;
   signOrder: number;
   signingTokenExpiresAt: number | null;
   signingTokenHash: string | null;
@@ -103,6 +109,8 @@ type PersistedReminder = {
   signerEmail: string;
   signerId: string;
   signerName: string;
+  /** An approver is reminded to approve, not to sign. */
+  signerRole: "approver" | "signer";
   senderName: string;
   userId: string;
 };
@@ -162,6 +170,7 @@ async function getReminderEnvelope(
         e.user_id AS "userId",
         e.title,
         e.status,
+        e.delivery,
         e.expires_at AS "expiresAt",
         e.reminder_interval_days AS "reminderIntervalDays",
         e.updated_at AS "updatedAt",
@@ -215,6 +224,7 @@ async function getCurrentSignerForEnvelope(
         envelope_id AS "envelopeId",
         name,
         email,
+        role,
         sign_order AS "signOrder",
         status,
         signing_token_hash AS "signingTokenHash",
@@ -242,34 +252,36 @@ function buildReminderEmail(input: {
   senderName: string;
   signerEmail: string;
   signerName: string;
+  signerRole?: "approver" | "signer";
   signingUrl: string;
 }) {
   const automatic = input.kind === "automatic";
+  const action = describeRequestedAction(input.signerRole);
   const subject = automatic
-    ? `Reminder: ${input.senderName} is waiting for your signature on "${input.envelopeTitle}"`
-    : `${input.senderName} sent you a reminder to sign "${input.envelopeTitle}"`;
+    ? `Reminder: ${input.senderName} is waiting for your ${action.noun} on "${input.envelopeTitle}"`
+    : `${input.senderName} sent you a reminder to ${action.verb} "${input.envelopeTitle}"`;
   const introLine = automatic
-    ? `${input.senderName} is still waiting for your signature on "${input.envelopeTitle}", sent through ${input.branding.productName}.`
-    : `${input.senderName} sent you a reminder to sign "${input.envelopeTitle}" through ${input.branding.productName}.`;
+    ? `${input.senderName} is still waiting for your ${action.noun} on "${input.envelopeTitle}", sent through ${input.branding.productName}.`
+    : `${input.senderName} sent you a reminder to ${action.verb} "${input.envelopeTitle}" through ${input.branding.productName}.`;
   const deadlineLine = buildDeadlineLine(input.expiresAt);
   const textBody = [
     `Hi ${input.signerName},`,
     "",
     introLine,
     "",
-    "Review and sign the document here:",
+    `${action.linkText} here:`,
     input.signingUrl,
     ...(deadlineLine ? ["", deadlineLine] : []),
     "",
-    `You do not need a ${input.branding.productName} account to sign.`,
+    `You do not need a ${input.branding.productName} account to ${action.accountLine}.`,
     "If you receive a newer invitation or reminder link, use the newest one.",
   ].join("\n");
   const htmlBody = [
     `<p>Hi ${escapeHtml(input.signerName)},</p>`,
     `<p>${escapeHtml(introLine)}</p>`,
-    `<p><a href="${escapeHtml(input.signingUrl)}">Review and sign the document</a></p>`,
+    `<p><a href="${escapeHtml(input.signingUrl)}">${escapeHtml(action.linkText)}</a></p>`,
     deadlineLine ? `<p>${escapeHtml(deadlineLine)}</p>` : "",
-    `<p>You do not need a ${escapeHtml(input.branding.productName)} account to sign.</p>`,
+    `<p>You do not need a ${escapeHtml(input.branding.productName)} account to ${action.accountLine}.</p>`,
     "<p>If you receive a newer invitation or reminder link, use the newest one.</p>",
   ].join("");
   const legalFooter = withUserEmailLegalFooter(
@@ -377,6 +389,16 @@ async function persistReminder(
     if (persistedEnvelope.status !== "sent") {
       throw new ReminderMutationError(
         "Only sent envelopes can receive reminders.",
+        409,
+      );
+    }
+
+    // Checked again under the lock: the envelope may have been sent for
+    // another app to sign since the early check, and a reminder would
+    // retire the link that app holds.
+    if (persistedEnvelope.delivery === "embedded") {
+      throw new ReminderMutationError(
+        "This envelope is signed in another app, so SignuDoc does not email its signers.",
         409,
       );
     }
@@ -527,6 +549,7 @@ async function persistReminder(
       signerEmail: persistedSigner.email,
       signerId: persistedSigner.id,
       signerName: persistedSigner.name,
+      signerRole: persistedSigner.role === "approver" ? "approver" : "signer",
       userId: persistedEnvelope.userId,
     };
   }, database);
@@ -557,6 +580,7 @@ async function deliverReminder(
           senderName: persisted.senderName,
           signerEmail: persisted.signerEmail,
           signerName: persisted.signerName,
+          signerRole: persisted.signerRole,
           signingUrl: persisted.issuedLink.url,
         }),
       )
@@ -662,6 +686,15 @@ export async function sendManualEnvelopeNudge(
     nowUnixTimestamp = Math.floor(Date.now() / 1000),
   }: SendReminderOptions = {},
 ) {
+  // Its signers sign in another app, which reminds them itself. A reminder
+  // would also retire the link that app holds.
+  if (await isEmbeddedEnvelope(envelopeId, database, userId)) {
+    throw new ReminderMutationError(
+      "This envelope is signed in another app, so SignuDoc does not email its signers.",
+      409,
+    );
+  }
+
   // Before the reminder is saved: saving retires the signer's current link,
   // so with no email to carry the new one the signer would be left with none.
   let service: EmailService;
@@ -777,6 +810,10 @@ export async function sendAutomaticEnvelopeReminder(
     signerId?: string;
   } = {},
 ): Promise<boolean> {
+  if (await isEmbeddedEnvelope(envelopeId, database)) {
+    return false;
+  }
+
   const targets = signerId
     ? [signerId]
     : await listWaitingSignerIds(envelopeId, database);

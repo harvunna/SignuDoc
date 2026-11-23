@@ -43,7 +43,7 @@ export async function GET(
     const { type } = downloadRequestSchema.parse({
       type: getDownloadType(request),
     });
-    // Its sender's, or any envelope for an administrator.
+    // Its sender's, or, once sent, a teammate's or any administrator's.
     const access = await resolveEnvelopeViewerAccess(
       session.user.id,
       id,
@@ -59,8 +59,9 @@ export async function GET(
     );
 
     if (access && !access.viewerIsOwner) {
-      // An administrator taking a copy of someone else's document is on
-      // record in the install's audit trail. No record, no file.
+      // An administrator or a teammate taking a copy of someone else's
+      // document is on record in the install's audit trail. No record, no
+      // file.
       await recordSystemAuditEvent({
         actorEmail: session.user.email,
         actorUserId: session.user.id,
