@@ -41,6 +41,21 @@ const html = `<!doctype html>
           tryItOutEnabled: false,
           docExpansion: "list",
           defaultModelsExpandDepth: 0,
+          // Send "Try it out" calls to the site this page is open on, not
+          // the server named in the description (the public address on
+          // production, the branch address on a preview). On another
+          // address of the same deployment the call would otherwise go
+          // cross-site and come back 401 or blocked.
+          requestInterceptor: function (request) {
+            try {
+              var target = new URL(request.url, window.location.href);
+              if (target.pathname.indexOf("/api/v1") === 0) {
+                request.url =
+                  window.location.origin + target.pathname + target.search;
+              }
+            } catch (error) {}
+            return request;
+          },
         });
       });
     </script>
