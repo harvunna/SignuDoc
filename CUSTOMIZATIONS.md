@@ -1,6 +1,6 @@
 # Signly customizations
 
-Signly (https://singly.globalcomputingmachines.com) is Global Computing
+Signly (https://signly.globalcomputingmachines.com) is Global Computing
 Machines' copy of [SignuDoc](https://github.com/NYLLON-SOFTWARE/SignuDoc)
 (MIT licence, Copyright (c) 2026 Nyllon Software). Keep `LICENSE` and
 `LICENSES/` as they are: the MIT licence requires the copyright notice to stay
@@ -79,12 +79,12 @@ repository. Recreate them if the install is ever rebuilt.
 
 - Vercel project `signly` (team gcm23): Neon database, Resend integration,
   private Blob store `signly-blob` (`BLOB_READ_WRITE_TOKEN`), domain
-  `singly.globalcomputingmachines.com`.
+  `signly.globalcomputingmachines.com`.
 - Resend domain `globalcomputingmachines.com`; DNS records `send`, `rsend`,
   `resend._domainkey` and `_dmarc` in Cloudflare.
 - App: Organization name "Signly", send-from
-  `singly-notifications@globalcomputingmachines.com`, sign-up "Nobody",
-  two-step sign-in required, API key "Signly", one webhook endpoint.
+  `singly-notifications@globalcomputingmachines.com`, sign-up "People at my organization",
+  two-step sign-in required, API key "Signly", one webhook endpoint. Sign-up domain globalcomputingmachines.com. Administrators: harvunna@gmail.com and harikrishna.vunnam@globalcomputingmachines.com. The old misspelled domain singly.globalcomputingmachines.com stays on the Vercel project as a 308 redirect to signly, and the Production variable APP_URL is set to https://signly.globalcomputingmachines.com so links and emails use the new address.
 
 ## Update check checklist (on the pull request's preview)
 
