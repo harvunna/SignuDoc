@@ -412,7 +412,8 @@ export function buildOpenApiDocument(
       },
       securitySchemes: {
         apiKey: {
-          description: "An API key from Settings, Organization, API keys.",
+          description:
+            "An API key from Settings, My API keys (or, for administrators, Organization, API keys). It acts as the person who made it.",
           scheme: "bearer",
           type: "http",
         },
@@ -880,7 +881,7 @@ export function buildOpenApiDocument(
                 },
               },
               description:
-                "Webhook deliveries to every endpoint, newest first, each with the payload it carried (null until its first try).",
+                "Webhook deliveries to every endpoint, newest first, each with the payload it carried (null until its first try). Only an administrator's key may read them; any other key gets 403.",
             },
             ...errors,
           },

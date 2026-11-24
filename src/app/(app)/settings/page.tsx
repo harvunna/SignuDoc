@@ -1,6 +1,7 @@
 import { OrganizationSettings } from "@/components/settings/organization-settings";
 import { SettingsShell } from "@/components/settings/settings-shell";
 import { UpdatesPanel } from "@/components/settings/updates-panel";
+import { ApiKeysPanel } from "@/components/settings/api-keys-panel";
 import { isAdminUser } from "@/lib/auth/admin";
 import { accountClosureBlock } from "@/lib/account";
 import { getAuthSession } from "@/lib/auth/server";
@@ -34,6 +35,11 @@ export default async function SettingsPage() {
           required: settings.requireTwoFactor,
         }}
       />
+      {/* Signly change: anyone with an account can have API keys. An
+          administrator manages every key from Organization settings. */}
+      {session && !isAdmin && !settings.hosted ? (
+        <ApiKeysPanel view="own" />
+      ) : null}
       {isAdmin ? (
         <OrganizationSettings
           // Read fresh, not from the short-lived cache, so the form never

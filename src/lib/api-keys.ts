@@ -15,9 +15,11 @@ import {
 } from "./db/connection.ts";
 import { recordSystemAuditEvent } from "./services/system-audit.ts";
 
-// API keys for the public API. An administrator creates one in Settings,
-// sees it once, and from then on it acts as that administrator. Only a
-// hash of the key is stored. See db/migrations/20261118090000_api_keys.sql.
+// API keys for the public API. Anyone with an account creates one in
+// Settings, sees it once, and from then on it acts as them: it reaches
+// their own envelopes and templates. Administrators see and can revoke
+// every key. (Signly change: SignuDoc lets only administrators have keys.)
+// Only a hash of the key is stored. See db/migrations/20261118090000_api_keys.sql.
 
 export const API_KEY_PREFIX = "sdk_";
 export const MAX_API_KEYS_PER_USER = 25;
@@ -70,6 +72,8 @@ export type ApiKeyPrincipal = {
   user: {
     email: string;
     id: string;
+    /** Whether the key's owner is an administrator right now. */
+    isAdmin: boolean;
     name: string;
   };
 };
@@ -171,7 +175,7 @@ function isAdminRow(row: { role: string } | null): boolean {
 }
 
 /**
- * Creates a key for the administrator `actor`. Returns the key itself, which
+ * Creates a key for `actor`, who may be any account. Returns the key itself, which
  * is never stored and cannot be shown again, and its summary.
  */
 export async function createApiKey(
@@ -191,16 +195,15 @@ export async function createApiKey(
   // the key instead of leaving one live whose secret was never shown.
   const summary = await withTransaction(async (tx) => {
     // Held while counting, so two requests at once cannot both slip under
-    // the limit, and while the role is checked, so a removal that lands at
-    // the same moment is seen.
+    // the limit.
     const owner = await queryOne<{ role: string }>(
       tx,
       `SELECT role FROM "user" WHERE id = $1 FOR UPDATE`,
       [actor.userId],
     );
 
-    if (!isAdminRow(owner)) {
-      throw new ApiKeyError("Only an administrator can do this.", 403);
+    if (!owner) {
+      throw new ApiKeyError("That account no longer exists.", 404);
     }
 
     const active = await queryOne<{ count: number }>(
@@ -326,7 +329,45 @@ export async function listApiKeys(
   );
 }
 
-/** Revokes a key for the administrator `actor`. Revoking twice is fine. */
+/**
+ * The keys of one account, for its own Settings page: every key not
+ * revoked, newest first, then its most recently revoked ones.
+ */
+export async function listApiKeysForUser(
+  userId: string,
+  database: DbExecutor = getDb(),
+): Promise<ApiKeySummary[]> {
+  return queryMany<ApiKeySummary>(
+    database,
+    `
+      WITH listed AS (
+        SELECT id, 0 AS list_group, created_at AS sorted_by
+        FROM api_keys
+        WHERE user_id = $1 AND revoked_at IS NULL
+        UNION ALL
+        (
+          SELECT id, 1 AS list_group, revoked_at AS sorted_by
+          FROM api_keys
+          WHERE user_id = $1 AND revoked_at IS NOT NULL
+          ORDER BY revoked_at DESC, id
+          LIMIT $2
+        )
+      )
+      SELECT ${SUMMARY_COLUMNS}
+      FROM listed l
+      JOIN api_keys k ON k.id = l.id
+      JOIN "user" u ON u.id = k.user_id
+      ORDER BY l.list_group, l.sorted_by DESC, k.id
+    `,
+    [userId, LISTED_REVOKED_API_KEYS],
+  );
+}
+
+/**
+ * Revokes a key for `actor`. An administrator may revoke any key; anyone
+ * else only their own, and another account's key looks to them as if it
+ * did not exist. Revoking twice is fine.
+ */
 export async function revokeApiKey(
   actor: Actor,
   keyId: string,
@@ -345,8 +386,8 @@ export async function revokeApiKey(
       [actor.userId],
     );
 
-    if (!isAdminRow(owner)) {
-      throw new ApiKeyError("Only an administrator can do this.", 403);
+    if (!owner) {
+      throw new ApiKeyError("That key no longer exists.", 404);
     }
 
     const key = await queryOne<{
@@ -365,7 +406,7 @@ export async function revokeApiKey(
       [keyId],
     );
 
-    if (!key) {
+    if (!key || (!isAdminRow(owner) && key.userId !== actor.userId)) {
       throw new ApiKeyError("That key no longer exists.", 404);
     }
 
@@ -455,8 +496,9 @@ export async function revokeApiKeysForUser(
 
 /**
  * The account a presented key acts as, or null if the key is unknown,
- * revoked, expired, or belongs to someone who is no longer an
- * administrator or is closing their account. Every one of those looks the
+ * revoked, expired, or belongs to someone whose email is not verified or
+ * who is closing their account. (Signly change: SignuDoc also turns away
+ * keys whose owner is not an administrator.) Every one of those looks the
  * same to the caller.
  */
 export async function authenticateApiKey(
@@ -508,7 +550,6 @@ export async function authenticateApiKey(
 
   if (
     !row ||
-    row.role !== "admin" ||
     row.emailVerified !== true ||
     // The lookup was by hash already; this only guards against a database
     // that compares text loosely.
@@ -541,6 +582,11 @@ export async function authenticateApiKey(
 
   return {
     apiKey: { id: row.id, name: row.name, scope: row.scope },
-    user: { email: row.email, id: row.userId, name: row.userName },
+    user: {
+      email: row.email,
+      id: row.userId,
+      isAdmin: row.role === "admin",
+      name: row.userName,
+    },
   };
 }

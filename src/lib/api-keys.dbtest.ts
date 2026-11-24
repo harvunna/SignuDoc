@@ -9,6 +9,7 @@ import {
   authenticateApiKey,
   createApiKey,
   listApiKeys,
+  listApiKeysForUser,
   LISTED_REVOKED_API_KEYS,
   MAX_API_KEYS_PER_USER,
   revokeApiKey,
@@ -230,29 +231,55 @@ test("a key stops working while its owner's account is being closed", async () =
   assert.equal(listed?.revokedAt, null);
 });
 
-test("only an administrator can create or revoke keys", async () => {
+// Signly change: SignuDoc lets only administrators have keys.
+test("anyone can have keys of their own, and only an administrator reaches other people's", async () => {
   const member = await createUser("user");
+  const otherMember = await createUser("user");
   const admin = await createUser();
-  const { summary } = await createApiKey(
+  const { summary: adminKey } = await createApiKey(
     admin,
     { expiresInDays: null, name: "Theirs", scope: "write" },
     database,
   );
+  const { key, summary: memberKey } = await createApiKey(
+    member,
+    { expiresInDays: null, name: "Mine", scope: "write" },
+    database,
+  );
 
-  await assert.rejects(
-    createApiKey(
-      member,
-      { expiresInDays: null, name: "Mine", scope: "write" },
-      database,
-    ),
-    (error: unknown) =>
-      error instanceof ApiKeyError && error.statusCode === 403,
+  const principal = await authenticateApiKey(key, database);
+
+  assert.equal(principal?.user.id, member.userId);
+  assert.equal(principal?.user.isAdmin, false);
+  assert.deepEqual(
+    (await listApiKeysForUser(member.userId, database)).map((row) => row.id),
+    [memberKey.id],
   );
-  await assert.rejects(
-    revokeApiKey(member, summary.id, database),
-    (error: unknown) =>
-      error instanceof ApiKeyError && error.statusCode === 403,
+
+  // Someone else's key looks to a member as if it did not exist.
+  for (const actor of [member, otherMember]) {
+    await assert.rejects(
+      revokeApiKey(
+        actor,
+        actor === member ? adminKey.id : memberKey.id,
+        database,
+      ),
+      (error: unknown) =>
+        error instanceof ApiKeyError && error.statusCode === 404,
+    );
+  }
+
+  await revokeApiKey(member, memberKey.id, database);
+  assert.equal(await authenticateApiKey(key, database), null);
+
+  const { summary: again } = await createApiKey(
+    member,
+    { expiresInDays: null, name: "Mine again", scope: "read" },
+    database,
   );
+  const revoked = await revokeApiKey(admin, again.id, database);
+
+  assert.notEqual(revoked.revokedAt, null);
 });
 
 test("an administrator can have only so many keys at once", async () => {
@@ -335,10 +362,11 @@ test("a revocation by an administrator being removed at that moment waits, and i
     holder.release();
   }
 
+  // No longer an administrator, so another person's key is out of reach.
   await assert.rejects(
     revocation!,
     (error: unknown) =>
-      error instanceof ApiKeyError && error.statusCode === 403,
+      error instanceof ApiKeyError && error.statusCode === 404,
   );
 
   const key = await database.query<{ revokedAt: number | null }>(

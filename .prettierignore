@@ -2,3 +2,6 @@
 node_modules
 public/pdfjs
 tsconfig.tsbuildinfo
+
+# Signly: vendored Swagger UI bundle (see CUSTOMIZATIONS.md).
+public/swagger-ui/
