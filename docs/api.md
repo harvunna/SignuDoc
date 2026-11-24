@@ -12,7 +12,10 @@ error codes are only ever added, never changed or removed.
 
 ## Keys
 
-An administrator makes a key under **Settings, Organization, API keys**:
+Anyone with an account makes their own keys under **Settings, My API keys**.
+An administrator's keys, and the list of every key on the install, are under
+**Settings, Organization, API keys**. (Signly change: SignuDoc lets only
+administrators have keys.)
 
 1. Give it a name that says which app uses it, such as "Billing app".
 2. Choose **Read and write** (create, send and void envelopes, and read
@@ -37,13 +40,16 @@ curl https://sign.example.com/api/v1/me \
 
 What to know about keys:
 
-- **A key acts as the administrator who made it.** Envelopes it creates are
-  theirs and show in their documents, sent in their name. An app that should
-  send in its own name gets its own administrator account (for example
-  "Billing app", with a shared mailbox) and its key from there.
+- **A key acts as the person who made it.** Envelopes it creates are
+  theirs and show in their documents, sent in their name, and it reaches
+  only their own envelopes and templates. An app that should send in its
+  own name gets its own account (for example "Billing app", with a shared
+  mailbox) and its key from there. Only an administrator's key can read
+  `GET /webhook-deliveries`, which covers every envelope on the install.
 - **A key stops working** the moment it is revoked, when it expires, when
-  its administrator stops being an administrator, or when their account is
-  being closed. A key that stopped because its administrator lost the role
+  its owner's email address is not verified, when an administrator who made
+  it stops being an administrator, or when its owner's account is being
+  closed. A key that stopped because its administrator lost the role
   stays revoked if they get it back; make a new one.
 - **Single sign-on does not reach keys.** On an install where people sign
   in only through single sign-on (`PASSWORD_SIGN_IN=off`), removing someone

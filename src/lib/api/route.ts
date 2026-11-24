@@ -143,6 +143,7 @@ export async function handleApi(
       apiKeyId: principal.apiKey.id,
       email: principal.user.email,
       ipAddress: getClientIpAddress(request.headers),
+      isAdmin: principal.user.isAdmin,
       name: principal.user.name,
       userAgent: getRequestUserAgent(request.headers),
       userId: principal.user.id,

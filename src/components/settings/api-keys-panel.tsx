@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 
 import type { ApiKeySummary } from "@/lib/api-keys";
 
-// API keys for the public API (/api/v1). Administrators only. A new key is
-// shown once, right after it is made, and never again.
+// API keys for the public API (/api/v1). A new key is shown once, right
+// after it is made, and never again. Administrators manage every key on
+// the install from Organization settings; anyone else manages their own
+// from their Settings (Signly change: SignuDoc has only the first).
 
 const GENERIC_ERROR_MESSAGE = "Something went wrong. Please try again.";
-const API_DOCS_URL =
-  "https://github.com/NYLLON-SOFTWARE/SignuDoc/blob/main/docs/api.md";
+// The install's own API reference (Swagger), a Signly addition.
+const API_DOCS_URL = "/api/v1";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
@@ -42,7 +44,15 @@ function keyState(key: ApiKeySummary, now: number) {
   return { label: "Active", revocable: true, tone: "pill-success" };
 }
 
-export function ApiKeysPanel() {
+type ApiKeysPanelProps = {
+  /** "organization": every key, for administrators. "own": the user's own. */
+  view?: "organization" | "own";
+};
+
+export function ApiKeysPanel({ view = "organization" }: ApiKeysPanelProps) {
+  const endpoint =
+    view === "own" ? "/api/account/api-keys" : "/api/admin/api-keys";
+
   const [keys, setKeys] = useState<ApiKeySummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Why the list did not load, kept apart from the errors of a change so
@@ -67,7 +77,7 @@ export function ApiKeysPanel() {
 
     void (async () => {
       try {
-        const response = await fetch("/api/admin/api-keys", {
+        const response = await fetch(endpoint, {
           cache: "no-store",
         });
         const payload = (await response.json().catch(() => null)) as {
@@ -97,7 +107,7 @@ export function ApiKeysPanel() {
     return () => {
       cancelled = true;
     };
-  }, [revision]);
+  }, [endpoint, revision]);
 
   async function createKey() {
     // A key on screen stays until Done, so its one-time secret is never lost
@@ -111,7 +121,7 @@ export function ApiKeysPanel() {
     setCopied(false);
 
     try {
-      const response = await fetch("/api/admin/api-keys", {
+      const response = await fetch(endpoint, {
         body: JSON.stringify({
           expiresInDays: expiry === "never" ? null : Number(expiry),
           name,
@@ -151,7 +161,7 @@ export function ApiKeysPanel() {
 
     try {
       const response = await fetch(
-        `/api/admin/api-keys/${encodeURIComponent(key.id)}`,
+        `${endpoint}/${encodeURIComponent(key.id)}`,
         { method: "DELETE" },
       );
       const payload = (await response.json().catch(() => null)) as {
@@ -203,10 +213,16 @@ export function ApiKeysPanel() {
   const trimmedName = name.trim();
 
   return (
-    <div className="space-y-5 border-t border-(--border) pt-8">
+    <div
+      className={
+        view === "own"
+          ? "panel space-y-5 p-6 sm:p-8"
+          : "space-y-5 border-t border-(--border) pt-8"
+      }
+    >
       <div className="space-y-2">
         <h3 className="text-lg font-extrabold tracking-[-0.02em] text-(--fg)">
-          API keys
+          {view === "own" ? "My API keys" : "API keys"}
         </h3>
         <p className="max-w-2xl text-sm leading-6 text-(--secondary)">
           Let another app create and send envelopes through the{" "}
@@ -216,12 +232,15 @@ export function ApiKeysPanel() {
             rel="noreferrer"
             target="_blank"
           >
-            SignuDoc API
+            API
           </a>
-          . A key acts as the administrator who made it: what it sends shows in
-          their documents. Keys skip two-step sign-in, so keep them in the
-          app&apos;s secret settings, never in a browser, and revoke one as soon
-          as it may have leaked.
+          .{" "}
+          {view === "own"
+            ? "A key acts as you: it reaches only your own envelopes and templates, and what it sends shows in your documents."
+            : "A key acts as the person who made it: what it sends shows in their documents. Everyone can make keys for themselves in their own Settings; this list shows every key on the site."}{" "}
+          Keys skip two-step sign-in, so keep them in the app&apos;s secret
+          settings, never in a browser, and revoke one as soon as it may have
+          leaked.
         </p>
       </div>
 

@@ -33,7 +33,18 @@ export async function GET(request: Request) {
     request,
     "read",
     "api_webhook_deliveries_failure",
-    async () => {
+    async ({ actor }) => {
+      // Deliveries carry events for every envelope on the install, so only
+      // an administrator's key may read them. (Signly change: any account
+      // can have a key here.)
+      if (actor.isAdmin !== true) {
+        return apiError(
+          403,
+          "forbidden",
+          "Only an administrator's key can read webhook deliveries.",
+        );
+      }
+
       const url = new URL(request.url);
       const query = querySchema.safeParse({
         cursor: url.searchParams.get("cursor") ?? undefined,

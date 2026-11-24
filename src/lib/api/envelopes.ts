@@ -152,6 +152,11 @@ export type ApiActor = {
   apiKeyId: string;
   email: string;
   ipAddress: string | null;
+  /**
+   * Whether the key's owner is an administrator. Signly lets anyone have a
+   * key, so routes that reach the whole install check this.
+   */
+  isAdmin?: boolean;
   name: string;
   userAgent: string | null;
   userId: string;

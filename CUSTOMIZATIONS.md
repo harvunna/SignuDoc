@@ -45,6 +45,8 @@ All changes here are small and text-only, except the Swagger page.
   `src/app/api/v1/page.tsx`, the update clashes. Then move this page to
   `src/app/api/v1/docs/route.ts` (served at `/api/v1/docs`) and keep
   SignuDoc's.
+- `eslint.config.mjs` and `.prettierignore` skip `public/swagger-ui/` (a vendored, minified
+  bundle).
 - To update Swagger UI: `npm pack swagger-ui-dist@5`, copy
   `swagger-ui-bundle.js`, `swagger-ui.css` and `LICENSE` into
   `public/swagger-ui/`. Check the bundle still has no `eval` (the CSP has no
@@ -72,6 +74,36 @@ two-step sign-in keys, sessions and integrations.
 - Not changed: the "SignuDoc" section of Settings (version and updates),
   shown to administrators only.
 
+### 3. API keys for everyone, not only administrators
+
+SignuDoc lets only administrators have API keys. In Signly anyone with an
+account makes keys for themselves, and a key reaches only its owner's own
+envelopes and templates (those queries were already per user).
+
+- `src/lib/api-keys.ts`: `createApiKey` no longer requires the admin role;
+  `revokeApiKey` lets an administrator revoke any key and anyone else only
+  their own (another's key answers 404); new `listApiKeysForUser`;
+  `authenticateApiKey` no longer refuses keys of non-administrators and
+  returns `user.isAdmin`.
+- `src/lib/api/envelopes.ts` (`ApiActor.isAdmin`) and `src/lib/api/route.ts`
+  pass that flag to the routes.
+- `src/app/api/v1/webhook-deliveries/route.ts`: 403 for a key whose owner is
+  not an administrator, because deliveries cover every envelope.
+- New `src/app/api/account/api-keys/route.ts` and `[id]/route.ts`: list,
+  create and revoke your own keys (signed-in session).
+- `src/components/settings/api-keys-panel.tsx`: `view="own"` for the new
+  "My API keys" panel; links to `/api/v1` (Swagger).
+- `src/app/(app)/settings/page.tsx`: shows "My API keys" to non-admins.
+  Administrators keep the full list under Organization.
+- `src/lib/api/openapi.ts` and `docs/api.md`: wording for the above.
+- Tests: `src/lib/api-keys.dbtest.ts` (members' own keys);
+  `src/lib/api/openapi.test.ts` skips `/api/v1` itself (the Swagger page).
+- Unchanged: an administrator who loses the role still has their keys
+  revoked.
+- Risk: SignuDoc changes in any of these files clash on update. Keep the
+  rules above: a key acts only as its owner, and nothing that lists the
+  whole install answers a non-administrator's key.
+
 ## Settings outside the code
 
 These live in Vercel, Resend, Cloudflare and the app, not in this
@@ -92,6 +124,8 @@ repository. Recreate them if the install is ever rebuilt.
 - [ ] Header and page titles say Signly; no "Powered by SignuDoc" in the footer.
 - [ ] `/api/v1` shows the Swagger page titled "Signly API".
 - [ ] `/api/v1/envelopes` without a key answers 401 `unauthorized`.
+- [ ] A non-admin account sees "My API keys" in Settings; its key works in
+      Swagger for `/me` and `/envelopes`, and gets 403 on `/webhook-deliveries`.
 - [ ] New envelope: upload a PDF (Blob storage works).
 - [ ] Settings > Email setup says "Email is working".
 - [ ] Settings > Webhooks > Send test answers 200.
