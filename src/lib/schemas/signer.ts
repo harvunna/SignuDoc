@@ -55,6 +55,10 @@ export const draftSignerSchema = z.object({
   // What the signature means, for Part 11 envelopes. Null clears it, and
   // leaving it out keeps the one already saved.
   signatureMeaning: z.enum(signatureMeanings).nullable().optional(),
+  // Signly: the sender hands their own device to this signer to sign, so
+  // no invitation or reminder is emailed to them. Leaving it out keeps
+  // what is saved.
+  inPerson: z.boolean().optional(),
 });
 
 export const signerListSchema = z
@@ -136,6 +140,7 @@ export const replaceSignersResponseSchema = z.object({
       email: emailSchema,
       id: idSchema,
       hasAccessCode: z.boolean(),
+      inPerson: z.boolean(),
       name: nameSchema,
       requireEmailCode: z.boolean(),
       role: recipientRoleSchema,
@@ -157,6 +162,9 @@ export const signerRecordSchema = draftSignerSchema.extend({
   signedAt: unixTimestampSchema.nullable().optional(),
   declinedAt: unixTimestampSchema.nullable().optional(),
   declineReason: optionalTrimmedString(1000).nullable().optional(),
+  // Signly: who opened the current in-person signing session, and when.
+  inPersonHostEmail: z.string().trim().min(1).nullable().optional(),
+  inPersonHostedAt: unixTimestampSchema.nullable().optional(),
   createdAt: unixTimestampSchema,
   updatedAt: unixTimestampSchema,
 });

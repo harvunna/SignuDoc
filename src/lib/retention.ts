@@ -202,6 +202,11 @@ async function listFieldImagesForEnvelopeIds(
       FROM provider_signing_sessions
       WHERE envelope_id IN (${placeholders})
         AND revision_key <> ''
+      -- Signly: files signers attached, used or not (signer-attachments.ts).
+      UNION
+      SELECT envelope_id, storage_key
+      FROM signer_attachment_uploads
+      WHERE envelope_id IN (${placeholders})
     `,
     envelopeIds,
   );
@@ -1034,7 +1039,8 @@ async function listEnvelopeArtifacts(
 
 /**
  * Every stored file of an envelope: its PDFs, certificates, first-page
- * picture, drawn signatures and signing-provider revisions. Read it before
+ * picture, drawn signatures, signing-provider revisions and the files
+ * signers attached. Read it before
  * the row goes, as the row is what names them.
  */
 export async function listEnvelopeStorageKeys(

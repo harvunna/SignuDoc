@@ -328,6 +328,16 @@ Every endpoint that returns an envelope returns the same object:
 - `files` gives the paths to download once there is something to download:
   the signed PDF once the envelope is completed, and the certificate of
   completion once it is completed, declined or voided.
+- `attachments` (Signly) lists the files signers uploaded in `attachment`
+  fields, once they signed: `fieldId`, `signerId`, `fileName`,
+  `contentType` (PDF, PNG or JPEG), `sizeBytes`, `sha256`, `submittedAt` and
+  the `url` to download it with the same key. An attachment field is placed
+  like any other field (`"type": "attachment"`) and can be optional; the
+  signer uploads a file of up to 4 MB.
+- A signer's `inPerson` (Signly) is true for someone who signs on the
+  sender's device: they get no invitation or reminder by email, and the
+  sender opens their session from the envelope's page in the web app. Set
+  it with `"inPerson": true` on the signer when creating the envelope.
 
 To know when something happens without asking again and again, use
 [webhooks](#webhooks).
@@ -343,6 +353,8 @@ To know when something happens without asking again and again, use
 | `POST /api/v1/envelopes/{id}/send`                          | write  | Sends a draft. Body: the `send` options above.                                                                                                                                                          |
 | `POST /api/v1/envelopes/{id}/void`                          | write  | Voids a sent envelope. Body: `{"reason": "…"}`, required on Part 11 installs.                                                                                                                           |
 | `POST /api/v1/envelopes/{id}/remind`                        | write  | Emails a reminder to each signer whose turn it is, at most once a day as in the web app. Too soon gets 429 with `Retry-After`.                                                                          |
+| `PATCH /api/v1/envelopes/{id}/signers/{signerId}`           | write  | Corrects the name and/or email of a signer who has not signed or declined. Body: `{"name": "…", "email": "…"}`. Their old link stops working and, if it is their turn, a new invitation goes out.       |
+| `GET /api/v1/envelopes/{id}/attachments/{fieldId}`          | read   | A file a signer attached.                                                                                                                                                                               |
 | `POST /api/v1/envelopes/{id}/signers/{signerId}/embed-link` | write  | A signing link for an embedded envelope, to show in a frame. Body: `{"origin": "https://…"}`. See [Embedded signing](#embedded-signing).                                                                |
 | `DELETE /api/v1/envelopes/{id}`                             | write  | Deletes a draft.                                                                                                                                                                                        |
 | `GET /api/v1/envelopes/{id}/events`                         | read   | The audit trail, oldest first.                                                                                                                                                                          |

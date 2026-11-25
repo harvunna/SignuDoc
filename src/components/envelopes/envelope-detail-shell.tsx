@@ -6,6 +6,7 @@ import {
   DownloadIcon,
   FileTextIcon,
   MinusIcon,
+  PaperclipIcon,
   PencilIcon,
   XIcon,
   type LucideIcon,
@@ -77,6 +78,8 @@ type EnvelopeDetailSigner = {
   metaLabel: string;
   name: string;
   order: number;
+  /** Signly: signs on the sender's device; never emailed a link. */
+  inPerson?: boolean;
   /** An approver's "signed" is shown as approved, "declined" as rejected. */
   role?: "approver" | "signer";
   status: SignerStatus;
@@ -174,6 +177,7 @@ export function EnvelopeDetailShell({
   const [isVoidingEnvelope, setIsVoidingEnvelope] = useState(false);
   const [correctingSigner, setCorrectingSigner] =
     useState<EnvelopeDetailSigner | null>(null);
+  const [hostingSignerId, setHostingSignerId] = useState<string | null>(null);
   const [voidReason, setVoidReason] = useState("");
   const [savedTemplateName, setSavedTemplateName] = useState<string | null>(
     null,
@@ -337,6 +341,43 @@ export function EnvelopeDetailShell({
       setActionError("Unable to change the deadline.");
     } finally {
       setIsChangingDeadline(false);
+    }
+  }
+
+  // Signly: opens an in-person signing session on this device, for the
+  // sender to hand to the signer. The signing page replaces this one.
+  async function handleStartInPersonSigning(signer: EnvelopeDetailSigner) {
+    if (
+      !window.confirm(
+        `Hand this device to ${signer.name} to sign. The signing page opens here, and the audit trail records that you hosted it.`,
+      )
+    ) {
+      return;
+    }
+
+    setActionError(null);
+    setHostingSignerId(signer.id);
+
+    try {
+      const response = await fetch(
+        `/api/envelopes/${encodeURIComponent(envelopeId)}/signers/${encodeURIComponent(signer.id)}/in-person`,
+        { method: "POST" },
+      );
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+        signingPath?: string;
+      } | null;
+
+      if (response.ok && payload?.signingPath?.startsWith("/sign/")) {
+        window.location.assign(payload.signingPath);
+        return;
+      }
+
+      setActionError(payload?.error ?? "Unable to start signing in person.");
+    } catch {
+      setActionError("Unable to start signing in person.");
+    } finally {
+      setHostingSignerId(null);
     }
   }
 
@@ -926,6 +967,11 @@ export function EnvelopeDetailShell({
                           <p className="truncate text-sm text-(--secondary)">
                             {signer.email}
                           </p>
+                          {signer.inPerson ? (
+                            <p className="text-xs font-semibold text-(--tertiary)">
+                              Signs in person
+                            </p>
+                          ) : null}
                         </div>
 
                         <div className="flex items-center gap-2 sm:flex-col sm:items-end sm:gap-1.5">
@@ -972,6 +1018,24 @@ export function EnvelopeDetailShell({
                               Change
                             </button>
                           ) : null}
+                          {isOwnEnvelope &&
+                          activeRecord.status === "sent" &&
+                          !isExpired &&
+                          signer.inPerson &&
+                          signer.status === "waiting" ? (
+                            <button
+                              className="btn-quiet inline-flex items-center gap-1.5"
+                              disabled={hostingSignerId !== null}
+                              onClick={() => {
+                                void handleStartInPersonSigning(signer);
+                              }}
+                              type="button"
+                            >
+                              {hostingSignerId === signer.id
+                                ? "Opening..."
+                                : "Sign in person"}
+                            </button>
+                          ) : null}
                         </div>
                       </div>
 
@@ -984,6 +1048,48 @@ export function EnvelopeDetailShell({
               );
             })}
           </ol>
+
+          {record.attachments && record.attachments.length > 0 ? (
+            <div className="mt-6">
+              <h3 className="text-[0.9375rem] font-extrabold text-(--fg)">
+                Attached by signers
+              </h3>
+              <ul className="mt-3 space-y-2">
+                {record.attachments.map((attachment) => (
+                  <li
+                    className="well flex items-center gap-3 px-4 py-3"
+                    key={attachment.fieldId}
+                  >
+                    <PaperclipIcon
+                      aria-hidden="true"
+                      className="size-4 shrink-0 text-(--secondary)"
+                      strokeWidth={2.2}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[0.9375rem] font-bold text-(--fg)">
+                        {attachment.fileName}
+                      </p>
+                      <p className="truncate text-sm text-(--secondary)">
+                        {attachment.signerName} · {attachment.sizeLabel}
+                      </p>
+                    </div>
+                    <a
+                      className="btn-quiet inline-flex items-center gap-1.5"
+                      download
+                      href={attachment.downloadUrl}
+                    >
+                      <DownloadIcon
+                        aria-hidden="true"
+                        className="size-3.5"
+                        strokeWidth={2.4}
+                      />
+                      Download
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
 
           {record.copyRecipients && record.copyRecipients.length > 0 ? (
             <div className="mt-6">

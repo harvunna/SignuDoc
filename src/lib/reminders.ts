@@ -202,6 +202,8 @@ async function listWaitingSignerIds(
       FROM signers
       WHERE envelope_id = $1
         AND status = 'notified'
+        -- Signly: a signer who signs in person is never emailed a link.
+        AND NOT in_person
       ORDER BY sign_order ASC, id ASC
     `,
     [envelopeId],
@@ -236,6 +238,8 @@ async function getCurrentSignerForEnvelope(
       WHERE envelope_id = $1
         AND status = 'notified'
         AND ($2::text IS NULL OR id = $2)
+        -- Signly: a signer who signs in person is never emailed a link.
+        AND NOT in_person
       ORDER BY sign_order ASC, id ASC
       LIMIT 1
     `,

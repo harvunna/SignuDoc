@@ -49,6 +49,8 @@ type SignerChecks = {
   wantsAccessCode: boolean;
   /** Part 11 mode: what this signature means (21 CFR 11.50). */
   signatureMeaning: SignatureMeaning | null;
+  /** Signly: signs on the sender's device; no invitation is emailed. */
+  inPerson: boolean;
 };
 
 type ShellSigner = SignerChecks & {
@@ -97,6 +99,7 @@ function createSigner(
     accessCode: "",
     email: overrides?.email ?? "",
     hasAccessCode: overrides?.hasAccessCode ?? false,
+    inPerson: overrides?.inPerson ?? false,
     localId,
     removeAccessCode: false,
     requireEmailCode: overrides?.requireEmailCode ?? false,
@@ -180,6 +183,7 @@ function buildInitialModel(record?: DraftSignerStepData): InitialModel {
     createSigner(signer.id, {
       email: signer.email,
       hasAccessCode: signer.hasAccessCode,
+      inPerson: signer.inPerson ?? false,
       name: signer.name,
       requireEmailCode: signer.requireEmailCode,
       role: signer.role,
@@ -328,6 +332,7 @@ function buildSignerRequest(
             : undefined,
       email: signer.email,
       id: signer.signerId,
+      inPerson: signer.inPerson,
       name: signer.name,
       requireEmailCode: signer.requireEmailCode,
       // Part 11 mode has no approvers (envelopes.ts).
@@ -707,6 +712,26 @@ function SignerCard({
             </label>
           ) : null}
         </fieldset>
+
+        <label className="flex items-start gap-3 rounded-2xl bg-white p-4 text-sm text-(--fg) sm:p-5">
+          <input
+            aria-label={`Signer ${order} signs in person`}
+            checked={signer.inPerson}
+            className="mt-0.5 size-4.5 shrink-0 cursor-pointer accent-(--accent)"
+            disabled={disabled}
+            onChange={(event: ChangeEvent<HTMLInputElement>) =>
+              onChecksChange({ inPerson: event.target.checked })
+            }
+            type="checkbox"
+          />
+          <span className="grid gap-1">
+            <span className="font-bold text-(--fg)">Signs in person</span>
+            <span className="text-[0.8125rem] leading-5 text-(--secondary)">
+              No email invitation. When it is their turn, open the envelope and
+              choose &ldquo;Sign in person&rdquo; to hand them your device.
+            </span>
+          </span>
+        </label>
       </div>
     </li>
   );

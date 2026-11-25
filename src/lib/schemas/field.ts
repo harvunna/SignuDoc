@@ -243,6 +243,14 @@ const radioSubmissionSchema = z.object({
   checked: z.boolean(),
 });
 
+// Signly: the file a signer uploaded for an attachment field, named by the
+// id the upload returned. The upload must be theirs and for this field.
+const attachmentSubmissionSchema = z.object({
+  fieldId: idSchema,
+  type: z.literal("attachment"),
+  uploadId: idSchema,
+});
+
 export const signingFieldSubmissionSchema = z.union([
   typedSignatureSubmissionSchema,
   drawnSignatureSubmissionSchema,
@@ -251,6 +259,7 @@ export const signingFieldSubmissionSchema = z.union([
   numberSubmissionSchema,
   dropdownSubmissionSchema,
   radioSubmissionSchema,
+  attachmentSubmissionSchema,
 ]);
 
 export const signingSubmissionSchema = z.object({

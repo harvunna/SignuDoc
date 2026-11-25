@@ -28,6 +28,8 @@ export type ApiSigner = {
   declineReason: string | null;
   email: string;
   id: string;
+  /** Signly: signs on the sender's device; never emailed a link. */
+  inPerson: boolean;
   name: string;
   order: number;
   ref: string | null;
@@ -43,6 +45,19 @@ export type ApiSigner = {
   viewedAt: string | null;
 };
 
+/** Signly: a file a signer attached while signing. */
+export type ApiAttachment = {
+  contentType: string;
+  fieldId: string;
+  fileName: string;
+  sha256: string;
+  signerId: string;
+  sizeBytes: number;
+  submittedAt: string | null;
+  /** Where to download it with the same key. */
+  url: string;
+};
+
 export type ApiDocument = {
   firstPage: number;
   name: string;
@@ -53,6 +68,8 @@ export type ApiDocument = {
 };
 
 export type ApiEnvelope = {
+  /** Signly: files signers attached, once they signed. */
+  attachments: ApiAttachment[];
   completedAt: string | null;
   copyRecipients: Array<{ email: string; id: string; name: string }>;
   createdAt: string;
@@ -110,6 +127,7 @@ type EnvelopeRow = {
 
 type SignerRow = {
   apiRef: string | null;
+  inPerson: boolean;
   declinedAt: number | null;
   declineReason: string | null;
   email: string;
@@ -172,6 +190,7 @@ async function readSigners(
         s.declined_at AS "declinedAt",
         s.decline_reason AS "declineReason",
         s.api_ref AS "apiRef",
+        s.in_person AS "inPerson",
         (
           SELECT min(a.created_at)
           FROM audit_events a
@@ -198,10 +217,66 @@ async function readSigners(
   return bySignerEnvelope;
 }
 
+type AttachmentRow = {
+  contentType: string;
+  envelopeId: string;
+  fieldId: string;
+  fileName: string;
+  sha256: string;
+  signerId: string;
+  sizeBytes: number;
+  submittedAt: number | null;
+};
+
+/** Signly: the files signers attached, by envelope. */
+async function readAttachments(
+  envelopeIds: string[],
+  database: DbExecutor,
+): Promise<Map<string, AttachmentRow[]>> {
+  const byEnvelope = new Map<string, AttachmentRow[]>();
+
+  if (envelopeIds.length === 0) {
+    return byEnvelope;
+  }
+
+  const rows = await queryMany<AttachmentRow>(
+    database,
+    `
+      SELECT
+        f.envelope_id AS "envelopeId",
+        f.id AS "fieldId",
+        f.signer_id AS "signerId",
+        f.submitted_at AS "submittedAt",
+        u.file_name AS "fileName",
+        u.content_type AS "contentType",
+        u.size_bytes AS "sizeBytes",
+        u.sha256
+      FROM fields f
+      JOIN signer_attachment_uploads u
+        ON u.field_id = f.id AND u.storage_key = f.image_key
+      WHERE f.envelope_id = ANY($1)
+        AND f.type = 'attachment'
+        AND f.submitted_at IS NOT NULL
+      ORDER BY f.envelope_id, f.page, f.y, f.x, f.id
+    `,
+    [envelopeIds],
+  );
+
+  for (const row of rows) {
+    const list = byEnvelope.get(row.envelopeId) ?? [];
+
+    list.push(row);
+    byEnvelope.set(row.envelopeId, list);
+  }
+
+  return byEnvelope;
+}
+
 export function toApiEnvelope(
   row: EnvelopeRow,
   signers: SignerRow[],
   now: number = Math.floor(Date.now() / 1000),
+  attachments: AttachmentRow[] = [],
 ): ApiEnvelope {
   const base = `/api/v1/envelopes/${encodeURIComponent(row.id)}/files`;
   const finished =
@@ -210,6 +285,16 @@ export function toApiEnvelope(
     row.status === "voided";
 
   return {
+    attachments: attachments.map((attachment) => ({
+      contentType: attachment.contentType,
+      fieldId: attachment.fieldId,
+      fileName: attachment.fileName,
+      sha256: attachment.sha256,
+      signerId: attachment.signerId,
+      sizeBytes: attachment.sizeBytes,
+      submittedAt: isoTime(attachment.submittedAt),
+      url: `/api/v1/envelopes/${encodeURIComponent(row.id)}/attachments/${encodeURIComponent(attachment.fieldId)}`,
+    })),
     completedAt: isoTime(row.completedAt),
     copyRecipients: signers
       .filter((signer) => signer.role === "cc")
@@ -248,6 +333,7 @@ export function toApiEnvelope(
         declineReason: signer.declineReason,
         email: signer.email,
         id: signer.id,
+        inPerson: Boolean(signer.inPerson),
         name: signer.name,
         order: signer.signOrder,
         ref: signer.apiRef,
@@ -280,8 +366,14 @@ export async function getApiEnvelope(
   }
 
   const signers = await readSigners([row.id], database);
+  const attachments = await readAttachments([row.id], database);
 
-  return toApiEnvelope(row, signers.get(row.id) ?? []);
+  return toApiEnvelope(
+    row,
+    signers.get(row.id) ?? [],
+    undefined,
+    attachments.get(row.id) ?? [],
+  );
 }
 
 function isPool(database: DbExecutor): database is DbPool {
@@ -361,9 +453,15 @@ async function readApiEnvelopeWithOwner(
   }
 
   const signers = await readSigners([row.id], database);
+  const attachments = await readAttachments([row.id], database);
 
   return {
-    envelope: toApiEnvelope(row, signers.get(row.id) ?? []),
+    envelope: toApiEnvelope(
+      row,
+      signers.get(row.id) ?? [],
+      undefined,
+      attachments.get(row.id) ?? [],
+    ),
     owner: { email: row.ownerEmail, id: row.ownerId, name: row.ownerName },
   };
 }
@@ -453,10 +551,21 @@ export async function listApiEnvelopes(
     page.map((row) => row.id),
     database,
   );
+  const attachments = await readAttachments(
+    page.map((row) => row.id),
+    database,
+  );
   const last = page.at(-1);
 
   return {
-    data: page.map((row) => toApiEnvelope(row, signers.get(row.id) ?? [])),
+    data: page.map((row) =>
+      toApiEnvelope(
+        row,
+        signers.get(row.id) ?? [],
+        undefined,
+        attachments.get(row.id) ?? [],
+      ),
+    ),
     nextCursor:
       rows.length > query.limit && last
         ? encodeCursor(last.createdAt, last.id)
