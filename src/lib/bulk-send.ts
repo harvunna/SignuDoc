@@ -27,6 +27,7 @@ import {
   sendDraftEnvelope,
 } from "./envelopes.ts";
 import { describePart11SignerProblem, findSignerAccounts } from "./part11.ts";
+import { describeSendBlock } from "./plan.ts";
 import {
   bulkSendRequestSchema,
   type BulkSendRequest,
@@ -784,6 +785,18 @@ export async function bulkSendFromTemplate(
     throw new BulkSendError("Unable to send this envelope.", 500);
   }
 
+  // Signly plans: a paused site, or a month with no envelopes left, sends
+  // none of the list, so it is said once instead of on every row. Each
+  // send still checks for itself (sendDraftEnvelope), for a limit reached
+  // part-way through.
+  const planBlock = parsedInput.confirm
+    ? await describeSendBlock(database)
+    : null;
+
+  if (planBlock) {
+    throw new BulkSendError(planBlock.message, planBlock.statusCode);
+  }
+
   const parsedCsv = parseBulkSendCsv(
     parsedInput.csv,
     template.roles,
@@ -852,12 +865,23 @@ export async function bulkSendFromTemplate(
     await saveSkippedBatchRows(batch, part11SkippedRowNumbers, database);
 
     const sent: BulkSendRowResult[] = [];
+    // Set when the plan refused a row (the month's limit was reached
+    // part-way through, or the site was paused). The rows after it are not
+    // tried: each would make a draft only to be refused too. They are not
+    // saved either, so confirming the same batch again once the plan allows
+    // it sends them.
+    let planRefusal: EnvelopeMutationError | null = null;
 
     for (const row of rows) {
       const stored = batch.rows.get(row.rowNumber);
 
       if (stored && TERMINAL_ROW_STATUSES.has(stored.status)) {
         sent.push(restoreStoredRow(row, stored));
+        continue;
+      }
+
+      if (planRefusal && row.status === "ok") {
+        sent.push(failedRow(row, stored?.envelopeId ?? null, planRefusal));
         continue;
       }
 
@@ -912,6 +936,10 @@ export async function bulkSendFromTemplate(
             },
             userId,
           });
+        }
+
+        if (error instanceof EnvelopeMutationError && error.code) {
+          planRefusal = error;
         }
 
         const failed = failedRow(row, progress.envelopeId, error);

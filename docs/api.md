@@ -83,18 +83,20 @@ Every error has the same shape, and the code is meant for your program:
 }
 ```
 
-| Status | Code                     | Meaning                                                                                  |
-| ------ | ------------------------ | ---------------------------------------------------------------------------------------- |
-| 400    | `invalid_request`        | The request is missing something or has a value that is not allowed.                     |
-| 401    | `unauthorized`           | No key, or one that is unknown, revoked or expired. All of these look the same.          |
-| 403    | `forbidden`              | The key may not do this, such as a read-only key asked to send.                          |
-| 404    | `not_found`              | There is no such thing, or the key's administrator cannot see it.                        |
-| 409    | `wrong_state`            | Not possible in the envelope's current state, such as sending one that was sent already. |
-| 413    | `payload_too_large`      | The file is too big, or a JSON-only request is over 64 KB.                               |
-| 422    | `idempotency_key_reused` | An `Idempotency-Key` was used before with a different request.                           |
-| 429    | `rate_limited`           | Too many requests. Wait the number of seconds in `Retry-After`.                          |
-| 500    | `internal_error`         | Something went wrong on the install. Try again later.                                    |
-| 503    | `internal_error`         | Email is not set up on the install yet, so nothing was sent. Try again once it is.       |
+| Status | Code                     | Meaning                                                                                   |
+| ------ | ------------------------ | ----------------------------------------------------------------------------------------- |
+| 400    | `invalid_request`        | The request is missing something or has a value that is not allowed.                      |
+| 401    | `unauthorized`           | No key, or one that is unknown, revoked or expired. All of these look the same.           |
+| 402    | `site_paused`            | The site's subscription needs attention, so nothing new can be sent. Reading still works. |
+| 402    | `plan_limit_reached`     | This month's envelopes (UTC) are used up under the site's plan. Nothing was sent.         |
+| 403    | `forbidden`              | The key may not do this, such as a read-only key asked to send.                           |
+| 404    | `not_found`              | There is no such thing, or the key's administrator cannot see it.                         |
+| 409    | `wrong_state`            | Not possible in the envelope's current state, such as sending one that was sent already.  |
+| 413    | `payload_too_large`      | The file is too big, or a JSON-only request is over 64 KB.                                |
+| 422    | `idempotency_key_reused` | An `Idempotency-Key` was used before with a different request.                            |
+| 429    | `rate_limited`           | Too many requests. Wait the number of seconds in `Retry-After`.                           |
+| 500    | `internal_error`         | Something went wrong on the install. Try again later.                                     |
+| 503    | `internal_error`         | Email is not set up on the install yet, so nothing was sent. Try again once it is.        |
 
 ## Rate limits
 
@@ -185,7 +187,8 @@ Things to know:
   key with a different request is refused with 422. If the install fails
   after the envelope was made, a retry with the same key gets that envelope
   rather than a second one. Use one key per thing you mean to send, such as
-  the invoice number.
+  the invoice number. A 402 (`site_paused`, `plan_limit_reached`) is not
+  kept, so the same key can be used again once the plan allows the send.
 
 ### PDFs over 4 MB
 

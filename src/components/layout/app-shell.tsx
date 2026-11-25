@@ -23,6 +23,11 @@ import { getInitials } from "@/lib/initials";
 
 type AppShellProps = {
   children: ReactNode;
+  /**
+   * Signly plans: set while the site is paused (SIGNLY_SITE_STATUS). The
+   * billing link is passed only to administrators, who can act on it.
+   */
+  pausedNotice?: { billingUrl: string | null; isAdmin: boolean } | null;
   /** Shown to the administrator until email can reach signers. */
   showEmailSetupNotice?: boolean;
   user: {
@@ -36,6 +41,7 @@ type ShellSection =
 
 export function AppShell({
   children,
+  pausedNotice = null,
   showEmailSetupNotice = false,
   user,
 }: AppShellProps) {
@@ -144,6 +150,33 @@ export function AppShell({
 
       <main className="flex-1 pb-14 pt-2 sm:pt-4">
         <div className="page-width">
+          {pausedNotice ? (
+            <div
+              className="mb-5 flex flex-col gap-3 rounded-2xl bg-(--warning-soft) px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+              data-testid="site-paused-notice"
+              role="status"
+            >
+              <p className="text-sm leading-6 text-(--fg)">
+                <span className="font-bold">
+                  This site&apos;s subscription needs attention.
+                </span>{" "}
+                New envelopes cannot be sent until it is sorted out. You can
+                still sign in, read and download, and signers can finish
+                envelopes already sent.
+                {pausedNotice.isAdmin ? null : " Ask an administrator."}
+              </p>
+              {pausedNotice.billingUrl ? (
+                <a
+                  className="shrink-0 text-sm font-bold text-(--warning) underline underline-offset-4"
+                  href={pausedNotice.billingUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Manage subscription
+                </a>
+              ) : null}
+            </div>
+          ) : null}
           {showEmailSetupNotice && currentSection !== "settings" ? (
             <div
               className="mb-5 flex flex-col gap-3 rounded-2xl bg-(--warning-soft) px-5 py-4 sm:flex-row sm:items-center sm:justify-between"

@@ -86,6 +86,11 @@ export function apiErrorFor(error: unknown): Response | null {
     });
   }
 
+  // A send the plan refuses carries its own code (src/lib/plan.ts).
+  if (error instanceof EnvelopeMutationError && error.code) {
+    return apiError(error.statusCode, error.code, error.message);
+  }
+
   if (
     error instanceof EnvelopeMutationError ||
     error instanceof EnvelopeDocumentAccessError ||
@@ -194,13 +199,15 @@ type AccountLimit = {
  * any other failure the retry runs again and needs what it was given.
  */
 export function isKept(status: number) {
-  return status < 500 && status !== 429;
+  // Signly plans: a 402 (site paused, month's envelopes used up) passes
+  // once the plan allows it, so like a 429 it lets the key go.
+  return status < 500 && status !== 429 && status !== 402;
 }
 
 /**
  * Runs `run` once per Idempotency-Key. Without the header it simply runs.
- * Only a response the caller can act on is kept: a 5xx or a 429 lets the
- * key go, so a retry runs again.
+ * Only a response the caller can act on is kept: a 5xx, a 429 or a 402
+ * lets the key go, so a retry runs again.
  *
  * Except once `run` has done what cannot be undone: it calls `remember`
  * with the envelope's id as soon as the envelope is made (and sent, if

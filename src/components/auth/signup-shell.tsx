@@ -35,6 +35,8 @@ const SIGNUP_RULE_ERROR_CODES = new Set([
   "setup_required",
   "signup_closed",
   "signup_domain_not_allowed",
+  // Signly plans: the site has as many accounts as its plan allows.
+  "signup_user_limit",
 ]);
 
 type SignupShellProps = {

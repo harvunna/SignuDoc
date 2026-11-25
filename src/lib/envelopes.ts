@@ -128,6 +128,12 @@ import {
 } from "./services/reminders.ts";
 import { formatEnvelopeOwner, sharesTeamCondition } from "./envelope-access.ts";
 import { PERMITTED_USE_VERSION } from "./permitted-uses.ts";
+import {
+  claimMonthlySend,
+  describeSendBlock,
+  releaseMonthlySend,
+  type SendBlock,
+} from "./plan.ts";
 import { hashAccessCode } from "./signer-checks.ts";
 import {
   describeSignerLimit,
@@ -507,11 +513,21 @@ export type DraftEnvelopeDocument = {
 const COPY_RECIPIENT_SIGN_ORDER_BASE = 500;
 
 export class EnvelopeMutationError extends Error {
+  /**
+   * The API error code, when the status alone does not say it (the plan
+   * refusals in plan.ts). Otherwise the API picks one from the status.
+   */
+  readonly code: SendBlock["code"] | null;
   readonly statusCode: number;
 
-  constructor(message: string, statusCode: number) {
+  constructor(
+    message: string,
+    statusCode: number,
+    code: SendBlock["code"] | null = null,
+  ) {
     super(message);
     this.name = "EnvelopeMutationError";
+    this.code = code;
     this.statusCode = statusCode;
   }
 }
@@ -2782,6 +2798,20 @@ export async function sendDraftEnvelope(
     throw new EnvelopeMutationError("Only draft envelopes can be sent.", 409);
   }
 
+  // Signly plans: every way of sending (the web app, bulk send, templates,
+  // the API) ends here, so this is where a paused site or a month's limit
+  // stops a send. Asked first so the sender hears it before anything else;
+  // the place in the month is taken under the send's lock further down.
+  const planBlock = await describeSendBlock(database);
+
+  if (planBlock) {
+    throw new EnvelopeMutationError(
+      planBlock.message,
+      planBlock.statusCode,
+      planBlock.code,
+    );
+  }
+
   const checkedParties = await readDraftParties(envelopeId, database);
   const { fields, signers } = checkedParties;
 
@@ -3194,6 +3224,19 @@ export async function sendDraftEnvelope(
         }
       }
 
+      // Near the end, so the month's row is held only briefly: every
+      // send on the site takes it.
+      // Refused, the whole send rolls back and the envelope stays a draft.
+      const monthBlock = await claimMonthlySend(tx, sentAt);
+
+      if (monthBlock) {
+        throw new EnvelopeMutationError(
+          monthBlock.message,
+          monthBlock.statusCode,
+          monthBlock.code,
+        );
+      }
+
       await recordAuditEvent(
         {
           actorEmail: input.senderEmail,
@@ -3315,6 +3358,9 @@ export async function sendDraftEnvelope(
       if (revertedEnvelope.rowCount !== 1) {
         return;
       }
+
+      // Nothing went out, so the send gives its place in the month back.
+      await releaseMonthlySend(tx, sentAt);
 
       await tx.query(
         `
