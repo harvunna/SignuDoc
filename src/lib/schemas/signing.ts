@@ -78,6 +78,21 @@ export const signingPayloadSchema = z.object({
   pageCount: z.number().int().positive(),
   pages: z.array(envelopePageSchema),
   /**
+   * Signly: the documents of the envelope, in order, by name and pages of
+   * the joined PDF. More than one only when the sender uploaded several.
+   */
+  documents: z
+    .array(
+      z.object({
+        firstPage: z.number().int().positive(),
+        index: z.number().int().positive(),
+        lastPage: z.number().int().positive(),
+        name: z.string().trim().min(1).max(255),
+        pageCount: z.number().int().positive(),
+      }),
+    )
+    .optional(),
+  /**
    * Set for a Part 11 envelope: the signer gives their email address and
    * password again to sign, and confirms what the signature means.
    */

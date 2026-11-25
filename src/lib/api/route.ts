@@ -52,7 +52,7 @@ export function apiErrorFor(error: unknown): Response | null {
   }
 
   if (error instanceof DocumentImportError) {
-    return error.code === "too_large"
+    return error.code === "too_large" || error.code === "too_large_together"
       ? apiError(413, "payload_too_large", error.message)
       : apiError(400, "invalid_request", error.message);
   }

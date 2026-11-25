@@ -1082,3 +1082,60 @@ test("the new wording leaves the audit fingerprint of a captured email unchanged
     "876cbd8661559c69681db5458f3baf2f8e1c8ccc4c43c9352691608e68b61c32",
   );
 });
+
+test("Signly: the certificate lists each document of an envelope of several", async () => {
+  const fixture = await makeFixture();
+  const pdfBytes = await renderEnvelopeCertificatePdf(
+    {
+      auditEvents: fixture.auditEvents,
+      envelope: {
+        ...fixture.envelope,
+        documents: [
+          {
+            firstPage: 1,
+            name: "Offer letter.pdf",
+            pageCount: 2,
+            sha256: "a".repeat(64),
+            sizeBytes: 1000,
+          },
+          {
+            firstPage: 3,
+            name: "Handbook.pdf",
+            pageCount: 1,
+            sha256: "b".repeat(64),
+            sizeBytes: 2000,
+          },
+        ],
+        pageCount: 3,
+      },
+      signers: fixture.signers,
+    },
+    { seal: saveUnsealed },
+  );
+  const text = (await extractText(pdfBytes)).replace(/\s+/g, " ");
+
+  assert.ok(text.includes("Documents (2)"), text);
+  assert.ok(text.includes("1. Offer letter.pdf | pages 1-2"));
+  assert.ok(text.includes("2. Handbook.pdf | page 3"));
+  assert.ok(text.includes("b".repeat(64)));
+  assert.ok(text.includes("Combined source PDF: umowa.pdf"));
+});
+
+test("Signly: an envelope of one document keeps the Source PDF line", async () => {
+  const fixture = await makeFixture();
+  const text = (
+    await extractText(
+      await renderEnvelopeCertificatePdf(
+        {
+          auditEvents: fixture.auditEvents,
+          envelope: fixture.envelope,
+          signers: fixture.signers,
+        },
+        { seal: saveUnsealed },
+      ),
+    )
+  ).replace(/\s+/g, " ");
+
+  assert.ok(text.includes("Source PDF: umowa.pdf"));
+  assert.ok(!text.includes("Documents ("));
+});

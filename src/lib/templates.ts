@@ -18,6 +18,10 @@ import {
   replaceDraftEnvelopeSigners,
 } from "./envelopes.ts";
 import {
+  documentsToStore,
+  parseStoredDocuments,
+} from "./envelope-documents.ts";
+import {
   countAnswerableFields,
   describeChoiceFieldProblem,
   findChoiceFieldProblem,
@@ -85,6 +89,8 @@ async function assertRoomForTemplate(
 
 type TemplateRow = {
   createdAt: number;
+  /** Signly: the files the template's PDF was joined from, or null. */
+  documents: unknown;
   fields: unknown;
   id: string;
   name: string;
@@ -131,6 +137,7 @@ const TEMPLATE_COLUMNS = `
   fields,
   source_pdf_key AS "sourcePdfKey",
   source_pdf_filename AS "sourcePdfFilename",
+  documents,
   created_at AS "createdAt"
 `;
 
@@ -143,6 +150,16 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 
 function countLabel(count: number, singular: string): string {
   return `${String(count)} ${count === 1 ? singular : `${singular}s`}`;
+}
+
+// "12 pages", or "3 documents, 12 pages" for a template of several files.
+function pagesLabel(row: TemplateRow): string {
+  const documents = parseStoredDocuments(row.documents, row.pageCount);
+  const pages = countLabel(row.pageCount, "page");
+
+  return documents
+    ? `${countLabel(documents.length, "document")}, ${pages}`
+    : pages;
 }
 
 // A list must still open when one template's stored contents cannot be
@@ -218,7 +235,7 @@ export async function listTemplatesForUser(
     fieldCountLabel: countLabel(countFields(row.fields), "field"),
     id: row.id,
     name: row.name,
-    pageCountLabel: countLabel(row.pageCount, "page"),
+    pageCountLabel: pagesLabel(row),
     roleNames: readRoleNames(row.roles),
   }));
 }
@@ -318,7 +335,7 @@ export async function getTemplateForBulkSend(
     fields: row.fields,
     id: row.id,
     name: row.name,
-    pageCountLabel: countLabel(row.pageCount, "page"),
+    pageCountLabel: pagesLabel(row),
     roles: roles.data,
   };
 }
@@ -454,6 +471,10 @@ export async function saveEnvelopeAsTemplate(
 
   const templateId = randomUUID();
   const sourcePdfKey = buildTemplatePdfKey({ templateId, userId });
+  const storedDocuments = documentsToStore(envelope.documents);
+  const documentsJson = storedDocuments
+    ? JSON.stringify(storedDocuments)
+    : null;
   const now = Math.floor(Date.now() / 1000);
 
   await storageService.putObject({
@@ -484,8 +505,9 @@ export async function saveEnvelopeAsTemplate(
             roles,
             fields,
             created_at,
-            updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $10)
+            updated_at,
+            documents
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $10, $11::jsonb)
         `,
         [
           templateId,
@@ -498,6 +520,9 @@ export async function saveEnvelopeAsTemplate(
           JSON.stringify(roles),
           JSON.stringify(fields),
           now,
+          // An envelope of several documents stays split the same way in
+          // every envelope started from the template.
+          documentsJson,
         ],
       );
     }, database);
@@ -571,6 +596,7 @@ export async function createDraftFromTemplate(
         contentType: "application/pdf",
         filename: template.sourcePdfFilename,
       },
+      documents: parseStoredDocuments(template.documents, template.pageCount),
       title: parsedInput.title,
     },
     { database, storageService },

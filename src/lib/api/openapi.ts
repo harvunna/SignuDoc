@@ -6,6 +6,7 @@
 import { getMaxSignersPerEnvelope } from "../signer-limit.ts";
 import {
   fieldTypes,
+  MAX_DOCUMENTS_PER_ENVELOPE,
   MAX_SIGNERS_CEILING,
   signatureMeanings,
 } from "../types/domain.ts";
@@ -175,8 +176,23 @@ export function buildOpenApiDocument(
             },
             title: titleSchema,
             uploadId: {
-              description: "With JSON: the id from POST /uploads.",
+              description:
+                "With JSON: the id from POST /uploads, for an envelope of one PDF.",
               type: "string",
+            },
+            uploads: {
+              description: `With JSON, instead of uploadId: several PDFs from POST /uploads, in order. They are combined into one PDF (up to ${String(MAX_DOCUMENTS_PER_ENVELOPE)} documents, 20 MB and 1000 pages in total).`,
+              items: {
+                properties: {
+                  filename: { type: "string" },
+                  uploadId: { type: "string" },
+                },
+                required: ["uploadId"],
+                type: "object",
+              },
+              maxItems: MAX_DOCUMENTS_PER_ENVELOPE,
+              minItems: 1,
+              type: "array",
             },
           },
           required: ["title", "signers", "fields"],
@@ -199,6 +215,24 @@ export function buildOpenApiDocument(
             createdAt: { format: "date-time", type: "string" },
             declinedAt: isoTime,
             delivery: { enum: ["email", "embedded"], type: "string" },
+            documents: {
+              description:
+                "The documents of the envelope in order, and the pages of its one PDF each became. One entry for an envelope of one PDF.",
+              items: {
+                properties: {
+                  firstPage: { minimum: 1, type: "integer" },
+                  name: { type: "string" },
+                  pageCount: { minimum: 1, type: "integer" },
+                  sha256: {
+                    description: "SHA-256 of the file as uploaded.",
+                    type: "string",
+                  },
+                  sizeBytes: { type: "integer" },
+                },
+                type: "object",
+              },
+              type: "array",
+            },
             expired: { type: "boolean" },
             expiresAt: isoTime,
             files: {
@@ -263,6 +297,13 @@ export function buildOpenApiDocument(
           description:
             "Position and size are fractions of the page (0 to 1), measured from its top left corner.",
           properties: {
+            document: {
+              description:
+                "Which document (1 for the first) page counts in. Left out, page counts across all the documents of the envelope together.",
+              maximum: MAX_DOCUMENTS_PER_ENVELOPE,
+              minimum: 1,
+              type: "integer",
+            },
             groupId: {
               description: "Radio buttons in one group.",
               maxLength: 64,
@@ -499,7 +540,12 @@ export function buildOpenApiDocument(
                 schema: {
                   allOf: [
                     { $ref: "#/components/schemas/CreateEnvelope" },
-                    { required: ["uploadId"] },
+                    {
+                      oneOf: [
+                        { required: ["uploadId"] },
+                        { required: ["uploads"] },
+                      ],
+                    },
                   ],
                 },
               },
@@ -507,10 +553,17 @@ export function buildOpenApiDocument(
                 schema: {
                   properties: {
                     data: {
-                      description: "CreateEnvelope as JSON, without uploadId.",
+                      description:
+                        "CreateEnvelope as JSON, without uploadId or uploads.",
                       type: "string",
                     },
-                    file: { format: "binary", type: "string" },
+                    file: {
+                      description: `The PDF. Repeat the part for several PDFs (up to ${String(MAX_DOCUMENTS_PER_ENVELOPE)}, 20 MB in total): they are combined into one PDF in the order sent.`,
+                      items: { format: "binary", type: "string" },
+                      maxItems: MAX_DOCUMENTS_PER_ENVELOPE,
+                      minItems: 1,
+                      type: "array",
+                    },
                   },
                   required: ["file", "data"],
                   type: "object",
