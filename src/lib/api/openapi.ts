@@ -39,6 +39,17 @@ const emailErrors = {
   },
 };
 
+// Signly plans: for the calls that send. 402 when the site is paused
+// (site_paused) or this month's envelopes are used up (plan_limit_reached).
+const sendErrors = {
+  ...emailErrors,
+  "402": {
+    ...errorResponse,
+    description:
+      "The site's plan does not allow a send now: site_paused while the subscription needs attention, plan_limit_reached when this month's envelopes are used up. Nothing was sent.",
+  },
+};
+
 const envelopeResponse = (description: string) => ({
   content: {
     "application/json": { schema: { $ref: "#/components/schemas/Envelope" } },
@@ -297,6 +308,8 @@ export function buildOpenApiDocument(
                     "wrong_state",
                     "payload_too_large",
                     "idempotency_key_reused",
+                    "plan_limit_reached",
+                    "site_paused",
                     "rate_limited",
                     "internal_error",
                   ],
@@ -604,7 +617,7 @@ export function buildOpenApiDocument(
             "201": envelopeResponse("The envelope, sent if send was given."),
             "413": errorResponse,
             "422": errorResponse,
-            ...emailErrors,
+            ...sendErrors,
           },
           summary: "Create an envelope, and send it if asked",
         },
@@ -744,7 +757,7 @@ export function buildOpenApiDocument(
             "200": envelopeResponse("The envelope, now sent."),
             "413": errorResponse,
             "422": errorResponse,
-            ...emailErrors,
+            ...sendErrors,
           },
           summary: "Send a draft",
         },
@@ -977,7 +990,7 @@ export function buildOpenApiDocument(
             "201": envelopeResponse("The new envelope."),
             "413": errorResponse,
             "422": errorResponse,
-            ...emailErrors,
+            ...sendErrors,
           },
           summary: "Create an envelope from a template",
         },

@@ -193,7 +193,55 @@ uploaded files; none of these is used by signing.
   the upload page clash on update. Keep the rule: one source PDF per
   envelope; the list only names its parts.
 
-### 6. Signer tools: attachments, in-person signing, signer correction in the API
+### 6. Plan limits and paused sites
+
+Signly is sold as one site per customer, set up by GCM's control panel. The
+plan reaches the site as environment variables, all optional: unset means
+no limit and an active site, so GCM's own site behaves as before.
+`SIGNLY_PLAN_NAME`, `SIGNLY_MAX_ENVELOPES_PER_MONTH` (UTC calendar month,
+every way of sending), `SIGNLY_MAX_USERS`, `SIGNLY_SITE_STATUS`
+(`active` or `paused`), `SIGNLY_BILLING_URL`, and `SIGNLY_CONTROL_SECRET`
+for the usage report.
+
+- New `src/lib/plan.ts`: reads the plan; the paused and monthly-limit checks;
+  the sign-up limit; the usage report; the control-panel secret check.
+- New migration `db/migrations/20261124120000_monthly_send_usage.sql`: a
+  per-month counter of sends (`monthly_send_usage`), filled from envelopes
+  already sent. A counter rather than a count, so deleting an envelope does
+  not give its place back.
+- `src/lib/envelopes.ts`: `sendDraftEnvelope`, which every send path uses
+  (web, bulk send, templates, API), refuses on a paused site or a used-up
+  month (402) and takes the month's place inside the send transaction; a
+  send whose first invitation fails gives it back. `EnvelopeMutationError`
+  has an optional API `code`.
+- `src/lib/bulk-send.ts`: refuses the whole list up front when paused or
+  used up; if the limit is reached part-way, the remaining rows are not
+  tried (and not saved, so confirming the batch again later sends them).
+- `src/lib/api/http.ts`, `src/lib/api/route.ts`: new error codes
+  `site_paused` and `plan_limit_reached` (402); a 402 does not keep the
+  `Idempotency-Key`. `src/lib/api/openapi.ts` and `docs/api.md` document them.
+- `src/lib/settings.ts` (`evaluateSignupRequest`): refuses a new account
+  (`signup_user_limit`) once the site has `SIGNLY_MAX_USERS` accounts, for
+  password sign-up and single sign-on alike.
+  `src/components/auth/signup-shell.tsx` and `sso-button.tsx` show it.
+- `src/components/layout/app-shell.tsx`, `src/app/(app)/layout.tsx`: a
+  banner while the site is paused (billing link for administrators).
+- New `src/components/settings/plan-panel.tsx`, shown by
+  `src/app/(app)/settings/page.tsx` to administrators when a plan is set:
+  plan name, "23 of 100 envelopes this month", accounts, upgrade link.
+- New `src/app/api/internal/usage/route.ts`: `GET` usage report (JSON) for
+  the control panel, bearer `SIGNLY_CONTROL_SECRET`; refuses everyone (401)
+  when the secret is unset.
+- `.env.example`: the new variables.
+- Tests: `src/lib/plan.test.ts`, `src/lib/plan.dbtest.ts` (web, API,
+  template and bulk sends limited; paused; racing sends; failed invitation
+  gives its place back; usage report), `src/lib/setup.dbtest.ts` (account
+  limit), `src/lib/api/route.dbtest.ts` (402 codes).
+- Risk: SignuDoc changes to `sendDraftEnvelope`, bulk send or the sign-up
+  rule clash on update. Keep the plan checks in `sendDraftEnvelope` so no
+  send path bypasses them.
+
+### 7. Signer tools: attachments, in-person signing, signer correction in the API
 
 - **Signer attachments.** New field type `attachment`: the sender places it
   for a signer (required or optional); the signer uploads a PDF, PNG or
@@ -295,6 +343,13 @@ repository. Recreate them if the install is ever rebuilt.
       document and "Go to document" jumps; sign fields in two documents; the
       certificate lists every document with its pages. A template saved from
       it says "N documents".
+
+- [ ] Plan limits: with `SIGNLY_MAX_ENVELOPES_PER_MONTH` set to the sends
+      so far plus one on the preview, one send works and the next is refused
+      (402 `plan_limit_reached` from the API); Settings shows "N of M
+      envelopes this month". With `SIGNLY_SITE_STATUS=paused` the banner shows
+      and sending is refused (`site_paused`). `GET /api/internal/usage` with
+      `Authorization: Bearer $SIGNLY_CONTROL_SECRET` returns JSON, 401 without.
 
 - [ ] Signer tools: place an Attachment field and tick "Signs in person" for
       a second signer; the first signer attaches a PDF and signs; the

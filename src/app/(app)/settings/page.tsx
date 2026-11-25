@@ -1,11 +1,13 @@
 import { OrganizationSettings } from "@/components/settings/organization-settings";
 import { SettingsShell } from "@/components/settings/settings-shell";
+import { PlanPanel } from "@/components/settings/plan-panel";
 import { UpdatesPanel } from "@/components/settings/updates-panel";
 import { ApiKeysPanel } from "@/components/settings/api-keys-panel";
 import { isAdminUser } from "@/lib/auth/admin";
 import { accountClosureBlock } from "@/lib/account";
 import { getAuthSession } from "@/lib/auth/server";
 import { toOrganizationSettingsView } from "@/lib/organization-settings";
+import { hasPlan, readPlanConfig, readPlanUsage } from "@/lib/plan";
 import {
   getSettings,
   readStoredSettings,
@@ -18,6 +20,10 @@ export default async function SettingsPage() {
   const session = await getAuthSession();
   const isAdmin = session ? await isAdminUser(session.user.id) : false;
   const settings = await getSettings();
+  // Signly plans: shown only on a site that has one, so a site without
+  // plan settings (GCM's own) looks as it always has.
+  const planUsage =
+    isAdmin && hasPlan(readPlanConfig()) ? await readPlanUsage() : null;
   const closureBlockedReason = session
     ? await accountClosureBlock(session.user).catch(() => null)
     : null;
@@ -40,6 +46,7 @@ export default async function SettingsPage() {
       {session && !isAdmin && !settings.hosted ? (
         <ApiKeysPanel view="own" />
       ) : null}
+      {planUsage ? <PlanPanel usage={planUsage} /> : null}
       {isAdmin ? (
         <OrganizationSettings
           // Read fresh, not from the short-lived cache, so the form never

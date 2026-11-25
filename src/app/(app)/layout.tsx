@@ -9,6 +9,7 @@ import { getAuthSession } from "@/lib/auth/server";
 import { buildBranding } from "@/lib/branding";
 import { emailNeedsAttention } from "@/lib/email-status";
 import { getInstallMetadata } from "@/lib/install";
+import { readPlanConfig } from "@/lib/plan";
 import { getSettings } from "@/lib/settings";
 import { needsTwoFactorSetup } from "@/lib/sign-in-security";
 
@@ -38,9 +39,18 @@ export default async function AuthenticatedAppLayout({
     redirect("/two-step-setup");
   }
 
+  const plan = readPlanConfig();
+
   return (
     <BrandingProvider branding={buildBranding(settings)}>
       <AppShell
+        // Signly plans: everyone is told the site is paused; only an
+        // administrator gets the billing link.
+        pausedNotice={
+          plan.status === "paused"
+            ? { billingUrl: isAdmin ? plan.billingUrl : null, isAdmin }
+            : null
+        }
         // Only the administrator can do anything about email, so only the
         // administrator is told when it still needs setting up.
         showEmailSetupNotice={isAdmin && emailNeedsAttention(settings)}

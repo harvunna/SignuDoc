@@ -13,6 +13,7 @@ import {
   type SignupMode,
   type SignupPolicy,
 } from "./signup-policy.ts";
+import { USER_LIMIT_MESSAGE, userLimitReached } from "./plan.ts";
 import { getEnv, isHostedMode, type EnvSource } from "./utils/env.ts";
 
 // Install-wide settings: one row in app_settings, written by the first-run
@@ -98,6 +99,13 @@ export type SetupState = {
 export type SetupRequiredDecision = {
   allowed: false;
   code: "setup_required";
+  message: string;
+};
+
+/** Signly plans: the site has as many accounts as SIGNLY_MAX_USERS. */
+export type UserLimitDecision = {
+  allowed: false;
+  code: "signup_user_limit";
   message: string;
 };
 
@@ -629,7 +637,7 @@ export async function evaluateSignupRequest(
   email: string,
   env: EnvSource = process.env,
   database: DbExecutor = getDb(),
-): Promise<SignupDecision | SetupRequiredDecision> {
+): Promise<SignupDecision | SetupRequiredDecision | UserLimitDecision> {
   const setupState =
     cache.setupCompleteUntil > Date.now()
       ? ({ status: "complete" } as const)
@@ -643,10 +651,24 @@ export async function evaluateSignupRequest(
     };
   }
 
-  return evaluateSignup(
+  const decision = evaluateSignup(
     email,
     resolveSettings(await readStoredSettings(database), env),
   );
+
+  // The sign-up rule first, so an address the rule turns away hears the
+  // rule. Then the plan's limit on accounts (src/lib/plan.ts). Two sign-ups
+  // at the same moment can both pass when one place is left; the control
+  // panel's usage report shows the count.
+  if (decision.allowed && (await userLimitReached(database, env))) {
+    return {
+      allowed: false,
+      code: "signup_user_limit",
+      message: USER_LIMIT_MESSAGE,
+    };
+  }
+
+  return decision;
 }
 
 /** True when every visitor should be sent to the setup page. */

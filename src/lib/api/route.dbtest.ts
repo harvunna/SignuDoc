@@ -342,10 +342,25 @@ test("a reminder sent too soon says when the next one can go", async () => {
   });
 });
 
+// Signly plans: a send the plan refuses answers 402 with its own code.
+test("a plan refusal answers 402 with its own code", async () => {
+  const { EnvelopeMutationError } = await import("../envelopes.ts");
+  const response = route.apiErrorFor(
+    new EnvelopeMutationError("Paused.", 402, "site_paused"),
+  );
+
+  assert.equal(response?.status, 402);
+  assert.deepEqual(await response?.json(), {
+    error: { code: "site_paused", message: "Paused." },
+  });
+});
+
 test("only refusals a retry would get again are kept for the key", () => {
   assert.equal(route.isKept(400), true);
   assert.equal(route.isKept(409), true);
   assert.equal(route.isKept(429), false);
+  // Signly plans: a paused site or a used-up month passes later.
+  assert.equal(route.isKept(402), false);
   assert.equal(route.isKept(503), false);
 });
 
