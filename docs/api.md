@@ -179,6 +179,8 @@ Things to know:
   half-made draft is left behind.
 - **`metadata`** is up to 2 KB of JSON of your own, returned with the
   envelope, for matching it to your records.
+- **Several documents.** Repeat the `file` part (see
+  [Several documents in one envelope](#several-documents-in-one-envelope)).
 - **`Idempotency-Key`** makes a retry safe. A request with a key SignuDoc has
   seen in the last 24 hours gets the first answer again (with the header
   `Idempotent-Replayed: true`) instead of making a second envelope. The same
@@ -208,10 +210,52 @@ curl https://sign.example.com/api/v1/envelopes \
   -d '{ "uploadId": "…", "filename": "big.pdf", "title": "…", "signers": […], "fields": […] }'
 ```
 
+For several PDFs, make one upload for each and name them in order with
+`uploads` instead of `uploadId`:
+
+```sh
+  -d '{ "uploads": [ { "uploadId": "…", "filename": "offer.pdf" },
+                     { "uploadId": "…", "filename": "policy.pdf" } ],
+        "title": "…", "signers": […], "fields": […] }'
+```
+
 The upload URL works for 10 minutes, and an upload that is never used is
 deleted after a day. Installs that keep files on their own disk (not on
 Vercel) do not need this and answer 404: send PDFs of up to 20 MB in the
 form.
+
+### Several documents in one envelope
+
+An envelope can hold up to 10 PDFs, 20 MB and 1000 pages in total. Send a
+`file` part for each, in the order signers should see them:
+
+```sh
+curl https://sign.example.com/api/v1/envelopes \
+  -H "Authorization: Bearer sdk_…" \
+  -F file=@offer.pdf \
+  -F file=@policy.pdf \
+  -F 'data={
+    "title": "Offer pack",
+    "signers": [
+      { "ref": "client", "name": "Casey Client", "email": "casey@example.com" }
+    ],
+    "fields": [
+      { "signer": "client", "type": "signature", "document": 1, "page": 2,
+        "x": 0.1, "y": 0.8, "width": 0.3, "height": 0.05 },
+      { "signer": "client", "type": "signature", "document": 2, "page": 1,
+        "x": 0.1, "y": 0.8, "width": 0.3, "height": 0.05 }
+    ]
+  }'
+```
+
+The PDFs are combined into one PDF, in that order, when the envelope is made.
+Signers see each document by its own name, the signed PDF and the
+certificate are one file each as for any envelope, and the certificate lists
+every document with its pages and the SHA-256 of the file you sent. A
+field's `page` counts within its `document` (1 for the first); without
+`document` it counts across all the documents together (`pageCount`). The
+envelope's `documents` says which pages each one became. One `file` part
+works exactly as before.
 
 ## The envelope
 
@@ -231,6 +275,15 @@ Every endpoint that returns an envelope returns the same object:
   "voidedAt": null,
   "expiresAt": "2026-12-01T09:00:01.000Z",
   "pageCount": 2,
+  "documents": [
+    {
+      "name": "agreement.pdf",
+      "firstPage": 1,
+      "pageCount": 2,
+      "sizeBytes": 48211,
+      "sha256": "9f2c…"
+    }
+  ],
   "signatureLevel": "simple",
   "delivery": "email",
   "metadata": { "invoice": "INV-1042" },
@@ -265,6 +318,8 @@ Every endpoint that returns an envelope returns the same object:
   the document and approves or rejects it instead of signing (see
   [Signing order](signing-order.md)): an approval shows as `signed` and a
   rejection as `declined`.
+- `documents` lists the PDFs the envelope was made from, in order, with the
+  pages of its one PDF that each became; one entry when there was one PDF.
 - `delivery` is `email` (signers are invited by email) or `embedded` (your
   app shows the signing page, see [Embedded signing](#embedded-signing)).
 - `files` gives the paths to download once there is something to download:

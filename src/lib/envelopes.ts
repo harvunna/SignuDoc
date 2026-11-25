@@ -39,6 +39,7 @@ import {
   type CreateEnvelopeResponse,
   type EnvelopeListFilters,
   type EnvelopePageRecord,
+  type EnvelopeDocument,
   type EnvelopeRecord,
   type SendEnvelopeResponse,
   type VoidEnvelopeResponse,
@@ -77,6 +78,17 @@ import {
 import { getBranding, readStoredSettings } from "./settings.ts";
 import { type RecipientRole, type SignatureMeaning } from "./types/domain.ts";
 import { importPdfDocument } from "./services/document-import.ts";
+import {
+  combineSourcePdfs,
+  type SourcePdfInput,
+} from "./services/document-combine.ts";
+import {
+  documentsToStore,
+  listEnvelopeDocuments,
+  parseStoredDocuments,
+  toDocumentViews,
+  type EnvelopeDocumentView,
+} from "./envelope-documents.ts";
 import {
   describeSignerCorrectedEvent,
   listAuditEventsForEnvelope,
@@ -155,11 +167,16 @@ type CreateDraftEnvelopeOptions = {
 };
 
 type CreateDraftEnvelopeInput = {
-  sourcePdf: {
-    body: Uint8Array;
-    contentType?: string | null;
-    filename: string;
-  };
+  /**
+   * Signly: the files the envelope is made of, in order. One file is stored
+   * as it is; several are joined into one PDF (see document-combine.ts).
+   */
+  sourcePdf: SourcePdfInput | readonly SourcePdfInput[];
+  /**
+   * The documents an already joined PDF is made of, carried over from a
+   * template. Ignored unless they cover the PDF's pages exactly.
+   */
+  documents?: readonly EnvelopeDocument[] | null;
   title: string;
 };
 
@@ -254,6 +271,7 @@ type EnvelopeRow = {
   updatedAt: number;
   userId: string;
   voidedAt: number | null;
+  documents?: unknown;
 };
 
 type SignerRow = {
@@ -392,6 +410,8 @@ export type ReviewEnvelopeData = {
   signingProvider: { name: string } | null;
   copyRecipients: readonly CopyRecipientRecord[];
   disabledReason: string | null;
+  /** Signly: the documents, in order; more than one when several were uploaded. */
+  documents?: readonly EnvelopeDocumentView[];
   envelopeId: string;
   filename: string;
   isEmpty: boolean;
@@ -432,6 +452,12 @@ export type DraftSignerStepData = {
 };
 
 export type PrepareEnvelopeData = {
+  /**
+   * Signly: the documents the envelope is made of, in order, always at
+   * least one. Fields are placed on pages of the joined PDF; this says
+   * which document each page belongs to.
+   */
+  documents: readonly EnvelopeDocument[];
   envelopeId: string;
   fields: readonly FieldRecord[];
   /** Sent back with each save, so a save from an older page is refused. */
@@ -661,11 +687,24 @@ export async function createDraftEnvelope(
     storageService = createStorageService(),
   }: CreateDraftEnvelopeOptions = {},
 ): Promise<DraftEnvelopeResult> {
+  const sourcePdfs = Array.isArray(input.sourcePdf)
+    ? (input.sourcePdf as readonly SourcePdfInput[])
+    : [input.sourcePdf as SourcePdfInput];
+  // Several files are joined here, once; the joined PDF is then imported
+  // and stored like a single upload.
+  const combined =
+    sourcePdfs.length === 1 ? null : await combineSourcePdfs(sourcePdfs);
+  const sourcePdf = combined ?? sourcePdfs[0]!;
   const importedPdf = await importPdfDocument({
-    body: input.sourcePdf.body,
-    contentType: input.sourcePdf.contentType,
-    filename: input.sourcePdf.filename,
+    body: sourcePdf.body,
+    contentType: sourcePdf.contentType,
+    filename: sourcePdf.filename,
   });
+  const documents = documentsToStore(
+    combined
+      ? combined.documents
+      : parseStoredDocuments(input.documents ?? null, importedPdf.pageCount),
+  );
   const envelopeId = randomUUID();
   const now = Math.floor(Date.now() / 1000);
   const sourcePdfKey = buildEnvelopeOriginalPdfKey({
@@ -674,7 +713,7 @@ export async function createDraftEnvelope(
   });
 
   await storageService.putObject({
-    body: input.sourcePdf.body,
+    body: sourcePdf.body,
     contentType: "application/pdf",
     key: sourcePdfKey,
   });
@@ -684,6 +723,7 @@ export async function createDraftEnvelope(
       completedAt: null,
       createdAt: now,
       declinedAt: null,
+      documents,
       evidenceKey: null,
       id: envelopeId,
       pageCount: importedPdf.pageCount,
@@ -729,9 +769,10 @@ export async function createDraftEnvelope(
             declined_at,
             voided_at,
             created_at,
-            updated_at
+            updated_at,
+            documents
           ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb
           )
         `,
         [
@@ -752,6 +793,7 @@ export async function createDraftEnvelope(
           envelope.voidedAt,
           envelope.createdAt,
           envelope.updatedAt,
+          envelope.documents ? JSON.stringify(envelope.documents) : null,
         ],
       );
 
@@ -920,6 +962,9 @@ export async function copyEnvelopeToDraft(
         completedAt: null,
         createdAt: now,
         declinedAt: null,
+        documents: documentsToStore(
+          parseStoredDocuments(source.documents ?? null, source.pageCount),
+        ),
         evidenceKey: null,
         id: newEnvelopeId,
         pageCount: source.pageCount,
@@ -955,9 +1000,10 @@ export async function copyEnvelopeToDraft(
             declined_at,
             voided_at,
             created_at,
-            updated_at
+            updated_at,
+            documents
           ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb
           )
         `,
         [
@@ -978,6 +1024,7 @@ export async function copyEnvelopeToDraft(
           copied.voidedAt,
           copied.createdAt,
           copied.updatedAt,
+          copied.documents ? JSON.stringify(copied.documents) : null,
         ],
       );
 
@@ -1250,6 +1297,7 @@ async function getEnvelopeByIdForUser(
         signed_pdf_key AS "signedPdfKey",
         evidence_key AS "evidenceKey",
         source_pdf_hash AS "sourcePdfHash",
+        documents,
         sent_at AS "sentAt",
         completed_at AS "completedAt",
         declined_at AS "declinedAt",
@@ -2158,6 +2206,7 @@ async function listEnvelopes(
         signed_pdf_key AS "signedPdfKey",
         evidence_key AS "evidenceKey",
         source_pdf_hash AS "sourcePdfHash",
+        documents,
         sent_at AS "sentAt",
         completed_at AS "completedAt",
         declined_at AS "declinedAt",
@@ -2635,6 +2684,7 @@ export async function getPrepareEnvelopeDataForUser(
   ]);
 
   return {
+    documents: listEnvelopeDocuments(envelope),
     envelopeId,
     fields: fieldsByEnvelope.get(envelopeId) ?? [],
     fieldsRevision,
@@ -2696,6 +2746,7 @@ export async function getReviewEnvelopeDataForUser(
       provider && !part11Mode && !hasApprovers ? { name: provider.name } : null,
     copyRecipients,
     disabledReason,
+    documents: toDocumentViews(listEnvelopeDocuments(envelope)),
     envelopeId,
     filename: envelope.sourcePdfFilename,
     isEmpty,

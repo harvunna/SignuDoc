@@ -19,8 +19,11 @@ import {
   reminderIntervalDaysSchema,
 } from "../schemas/envelope.ts";
 import { fieldTypeSchema } from "../schemas/field.ts";
+import { listEnvelopeDocuments } from "../envelope-documents.ts";
+import type { SourcePdfInput } from "../services/document-combine.ts";
 import {
   MAX_COPY_RECIPIENTS_PER_ENVELOPE,
+  MAX_DOCUMENTS_PER_ENVELOPE,
   MAX_SIGNERS_CEILING,
   signatureMeanings,
 } from "../types/domain.ts";
@@ -94,6 +97,16 @@ const apiSignerSchema = z.object({
 });
 
 const apiFieldSchema = z.object({
+  /**
+   * Signly: which document (1-based, in upload order) `page` counts in.
+   * Left out, `page` counts across all the documents together.
+   */
+  document: z
+    .number()
+    .int()
+    .positive()
+    .max(MAX_DOCUMENTS_PER_ENVELOPE)
+    .optional(),
   groupId: z.string().trim().min(1).max(64).optional(),
   height: z.number().finite().gt(0).max(1),
   label: z.string().trim().max(120).optional(),
@@ -210,7 +223,8 @@ export async function sendEnvelopeForApi(
 export async function createEnvelopeForApi(
   actor: ApiActor,
   input: ApiCreateEnvelopeInput,
-  sourcePdf: { body: Uint8Array; contentType: string; filename: string },
+  /** Signly: one PDF, or several to be joined in this order. */
+  sourcePdf: SourcePdfInput | readonly SourcePdfInput[],
   database: DbPool = getDb(),
   options: {
     /** Called once the envelope is made, and sent if asked, for good. */
@@ -223,16 +237,41 @@ export async function createEnvelopeForApi(
     { database },
   );
   const envelopeId = draft.envelope.id;
+  const documents = listEnvelopeDocuments(draft.envelope);
 
   try {
-    for (const [index, field] of input.fields.entries()) {
-      if (field.page > draft.envelope.pageCount) {
+    // Every field's page in the joined PDF. A field that names its document
+    // counts its page within that document.
+    const pages = input.fields.map((field, index) => {
+      if (field.document === undefined) {
+        if (field.page > draft.envelope.pageCount) {
+          throw new EnvelopeMutationError(
+            `fields.${String(index)}.page: the document has ${String(draft.envelope.pageCount)} page(s).`,
+            400,
+          );
+        }
+
+        return field.page;
+      }
+
+      const document = documents[field.document - 1];
+
+      if (!document) {
         throw new EnvelopeMutationError(
-          `fields.${String(index)}.page: the document has ${String(draft.envelope.pageCount)} page(s).`,
+          `fields.${String(index)}.document: the envelope has ${String(documents.length)} document(s).`,
           400,
         );
       }
-    }
+
+      if (field.page > document.pageCount) {
+        throw new EnvelopeMutationError(
+          `fields.${String(index)}.page: document ${String(field.document)} has ${String(document.pageCount)} page(s).`,
+          400,
+        );
+      }
+
+      return document.firstPage + field.page - 1;
+    });
 
     const signers = await replaceDraftEnvelopeSigners(
       actor.userId,
@@ -275,12 +314,12 @@ export async function createEnvelopeForApi(
       actor.userId,
       envelopeId,
       {
-        fields: input.fields.map((field) => ({
+        fields: input.fields.map((field, index) => ({
           groupId: field.groupId,
           height: field.height,
           label: field.label,
           options: field.options,
-          page: field.page,
+          page: pages[index]!,
           required: field.required ?? true,
           signerId: idByRef.get(field.signer),
           type: field.type,

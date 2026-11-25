@@ -5,6 +5,7 @@ import {
   auditEventTypes,
   downloadFileTypes,
   envelopeStatuses,
+  MAX_DOCUMENTS_PER_ENVELOPE,
   MAX_ENVELOPE_DEADLINE_DAYS,
   MAX_ENVELOPE_REMINDER_DAYS,
 } from "../types/domain.ts";
@@ -136,6 +137,28 @@ export const signatureLevelSchema = z.enum(["simple", "advanced", "qualified"]);
 
 export type EnvelopeSignatureLevel = z.infer<typeof signatureLevelSchema>;
 
+/**
+ * One of the files an envelope was made from, when the sender uploaded more
+ * than one (Signly). The files are joined into the envelope's one source
+ * PDF; this says which pages of it each one became. See
+ * envelope-documents.ts.
+ */
+export const envelopeDocumentSchema = z.object({
+  name: z.string().trim().min(1).max(255),
+  firstPage: z.number().int().positive(),
+  pageCount: z.number().int().positive(),
+  sizeBytes: z.number().int().positive(),
+  /** SHA-256 of the file as it was uploaded, before it was joined. */
+  sha256: sourcePdfHashSchema,
+});
+
+export const envelopeDocumentListSchema = z
+  .array(envelopeDocumentSchema)
+  .min(1)
+  .max(MAX_DOCUMENTS_PER_ENVELOPE);
+
+export type EnvelopeDocument = z.infer<typeof envelopeDocumentSchema>;
+
 export const envelopeRecordSchema = z.object({
   id: idSchema,
   userId: idSchema,
@@ -170,6 +193,13 @@ export const envelopeRecordSchema = z.object({
   /** The PDF as the last signer signed it, for provider signatures. */
   revisionKey: z.string().trim().min(1).nullable().optional(),
   revisionSha256: sourcePdfHashSchema.nullable().optional(),
+  /**
+   * The files the source PDF was joined from, in order, or null for an
+   * envelope of one file. Only read where it is shown.
+   */
+  // A list that does not parse is shown as one document rather than
+  // stopping the envelope from loading.
+  documents: envelopeDocumentListSchema.nullable().optional().catch(null),
   createdAt: unixTimestampSchema,
   updatedAt: unixTimestampSchema,
 });

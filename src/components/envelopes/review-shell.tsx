@@ -17,6 +17,10 @@ import {
 } from "@/components/ui/dialog";
 import type { ReviewEnvelopeData } from "@/lib/envelopes";
 import { PERMITTED_USE_PATH } from "@/lib/permitted-uses";
+import {
+  describePageRange,
+  type EnvelopeDocumentView,
+} from "@/lib/envelope-documents";
 import { formatReminderInterval } from "@/lib/services/reminders";
 import {
   DEFAULT_ENVELOPE_DEADLINE_DAYS,
@@ -38,6 +42,7 @@ type ReviewShellProps = {
 
 type ReviewRecordView = {
   copyRecipients: readonly { email: string; id: string; name: string }[];
+  documents: readonly EnvelopeDocumentView[];
   filename: string;
   pageCount: number;
   signers: readonly ReviewSigner[];
@@ -235,6 +240,7 @@ export function ReviewShell({
 
   const activeRecord: ReviewRecordView = {
     copyRecipients: record.copyRecipients ?? [],
+    documents: record.documents ?? [],
     filename: record.filename,
     pageCount: record.pageCount,
     signers: record.signers.map((signer) => ({ ...signer })),
@@ -295,9 +301,23 @@ export function ReviewShell({
                 {activeRecord.title}
               </h2>
               <p className="text-sm leading-6 text-(--secondary)">
-                {activeRecord.filename} - {activeRecord.pageCount} pages -{" "}
-                {activeRecord.sizeLabel}
+                {activeRecord.documents.length > 1
+                  ? `${String(activeRecord.documents.length)} documents`
+                  : activeRecord.filename}{" "}
+                - {activeRecord.pageCount} pages - {activeRecord.sizeLabel}
               </p>
+              {activeRecord.documents.length > 1 ? (
+                <ol
+                  aria-label="Documents"
+                  className="space-y-0.5 text-[0.8125rem] leading-5 text-(--secondary)"
+                >
+                  {activeRecord.documents.map((document) => (
+                    <li className="truncate" key={document.index}>
+                      {`${String(document.index)}. ${document.name} (${describePageRange(document)})`}
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
             </div>
           </article>
 

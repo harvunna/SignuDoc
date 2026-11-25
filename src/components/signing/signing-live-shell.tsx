@@ -53,6 +53,10 @@ import {
   isNumberEntry,
   NUMBER_ENTRY_MESSAGE,
 } from "@/lib/field-choices";
+import {
+  describeDocumentPage,
+  findDocumentForPage,
+} from "@/lib/envelope-documents";
 import { getInitials } from "@/lib/initials";
 import { truncateToWholeCharacters } from "@/lib/text-truncate";
 import { postToEmbedParent } from "./embed-parent-message";
@@ -618,6 +622,12 @@ export function SigningLiveShell({
   const activePageRecord =
     record.pages.find((page) => page.pageNumber === activePage) ??
     record.pages[0];
+  // Signly: an envelope of several documents names the one on screen and
+  // lets the signer jump between them. Empty for one document.
+  const documents =
+    record.documents && record.documents.length > 1 ? record.documents : [];
+  const activeDocument = findDocumentForPage(documents, activePage);
+  const activeDocumentLabel = describeDocumentPage(documents, activePage);
   const pageCurrentFields = record.currentSignerFields.filter(
     (field) => field.page === activePage,
   );
@@ -1220,11 +1230,19 @@ export function SigningLiveShell({
                   >
                     <ChevronLeftIcon className="size-4" />
                   </button>
-                  <div className="min-w-[7.5rem] text-center">
+                  <div className="min-w-[7.5rem] max-w-[16rem] text-center">
                     <p className="sr-only">Document page</p>
                     <p className="text-sm font-bold text-(--fg)">
                       {`Page ${activePage} of ${record.pageCount}`}
                     </p>
+                    {activeDocumentLabel ? (
+                      <p
+                        className="truncate text-[0.75rem] text-(--secondary)"
+                        title={activeDocumentLabel}
+                      >
+                        {activeDocumentLabel}
+                      </p>
+                    ) : null}
                   </div>
                   <button
                     aria-label="Next page"
@@ -1241,7 +1259,26 @@ export function SigningLiveShell({
                   </button>
                 </div>
 
-                <div className="flex justify-center xl:justify-end">
+                <div className="flex flex-wrap items-center justify-center gap-3 xl:justify-end">
+                  {documents.length > 1 ? (
+                    <select
+                      aria-label="Go to document"
+                      className="field-input max-w-[14rem] py-1.5 text-sm"
+                      onChange={(event) =>
+                        setActivePage(Number(event.target.value))
+                      }
+                      value={String(activeDocument?.firstPage ?? 1)}
+                    >
+                      {documents.map((document) => (
+                        <option
+                          key={document.index}
+                          value={String(document.firstPage)}
+                        >
+                          {`${String(document.index)}. ${document.name} (${String(document.pageCount)} ${document.pageCount === 1 ? "page" : "pages"})`}
+                        </option>
+                      ))}
+                    </select>
+                  ) : null}
                   <SigningToolbarStatus
                     hasLockedFields={pageVisibleFields.length > 0}
                     pageHasNoFields={
@@ -1468,7 +1505,7 @@ export function SigningLiveShell({
                     )}
                     isInvalid={isInvalidEntry(field)}
                     key={field.id}
-                    label={`${getSummaryLabel(field)} · Page ${field.page}`}
+                    label={`${getSummaryLabel(field)} · ${describeDocumentPage(documents, field.page) ?? `Page ${field.page}`}`}
                     value={getCompletionValue(
                       field,
                       record.currentSignerFields,
