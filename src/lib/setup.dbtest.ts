@@ -500,3 +500,29 @@ test("an email check only vouches for the sender address it was made with", asyn
   );
   assert.notEqual(await readyAt(), null);
 });
+
+// Signly plans: SIGNLY_MAX_USERS (src/lib/plan.ts).
+test("sign-up stops when the site has as many accounts as its plan allows", async () => {
+  await insertUser("owner@acme.com", "admin");
+  await saveSettings({ setupCompletedAt: 1, signupMode: "open" }, database);
+
+  const withLimit = { SIGNLY_MAX_USERS: "2" };
+
+  assert.deepEqual(
+    await evaluateSignupRequest("first@anywhere.example", withLimit, database),
+    { allowed: true },
+  );
+
+  await insertUser("first@anywhere.example");
+
+  const refused = await evaluateSignupRequest(
+    "second@anywhere.example",
+    withLimit,
+    database,
+  );
+
+  assert.equal(refused.allowed, false);
+  assert.equal(refused.allowed ? null : refused.code, "signup_user_limit");
+  // Without the limit, the same address may sign up.
+  assert.deepEqual(await signUp("second@anywhere.example"), { allowed: true });
+});

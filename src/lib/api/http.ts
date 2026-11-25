@@ -11,7 +11,11 @@ export type ApiErrorCode =
   | "invalid_request"
   | "not_found"
   | "payload_too_large"
+  // Signly plans (src/lib/plan.ts): 402 when a send is refused because the
+  // site is paused or its month's envelopes are used up.
+  | "plan_limit_reached"
   | "rate_limited"
+  | "site_paused"
   | "unauthorized"
   | "wrong_state";
 
