@@ -24,7 +24,11 @@ import {
   readPendingUpload,
 } from "@/lib/services/pending-uploads";
 import { createStorageService } from "@/lib/services/storage";
-import { MAX_UPLOAD_SIZE_BYTES } from "@/lib/types/domain";
+import { DocumentImportError } from "@/lib/services/document-import";
+import {
+  MAX_DOCUMENTS_PER_ENVELOPE,
+  MAX_UPLOAD_SIZE_BYTES,
+} from "@/lib/types/domain";
 
 // GET lists the key's envelopes, newest first. POST creates one from a PDF
 // with its signers and fields, and sends it too if asked. See docs/api.md.
@@ -91,7 +95,7 @@ export async function POST(request: Request) {
       }
 
       let data: unknown;
-      let readPdf: () => Promise<SourcePdf>;
+      let readPdf: () => Promise<SourcePdf[]>;
       let cleanUp = async () => {};
       let fingerprint: Uint8Array | string = raw;
 
@@ -103,70 +107,100 @@ export async function POST(request: Request) {
         })
           .formData()
           .catch(() => null);
-        const file = form?.get("file");
+        // Signly: every "file" part is a document, in the order sent. They
+        // are joined into the envelope's one PDF.
+        const files = form?.getAll("file") ?? [];
         const json = form?.get("data");
 
-        if (!(file instanceof File) || typeof json !== "string") {
+        if (
+          files.length === 0 ||
+          !files.every((file) => file instanceof File) ||
+          typeof json !== "string"
+        ) {
           return apiError(
             400,
             "invalid_request",
-            'Send a "file" part with the PDF and a "data" part with the envelope as JSON.',
+            'Send one or more "file" parts with the PDFs and a "data" part with the envelope as JSON.',
+          );
+        }
+
+        if (files.length > MAX_DOCUMENTS_PER_ENVELOPE) {
+          return apiError(
+            400,
+            "invalid_request",
+            `Send at most ${String(MAX_DOCUMENTS_PER_ENVELOPE)} "file" parts.`,
           );
         }
 
         data = parseJson(json);
-        const fileBytes = new Uint8Array(await file.arrayBuffer());
+        const pdfs = await Promise.all(
+          (files as File[]).map(async (file) => ({
+            body: new Uint8Array(await file.arrayBuffer()),
+            contentType: file.type || "application/pdf",
+            filename: file.name || "document.pdf",
+          })),
+        );
 
         // A multipart body differs on every send (its boundary is random),
         // so a retry is recognised by what it carries instead, file name
-        // and type included.
+        // and type included. One file keeps the fingerprint it always had.
         fingerprint = JSON.stringify([
           json,
-          file.name,
-          file.type,
-          createHash("sha256").update(fileBytes).digest("hex"),
+          ...pdfs.flatMap((pdf, index) => [
+            pdf.filename,
+            (files[index] as File).type,
+            createHash("sha256").update(pdf.body).digest("hex"),
+          ]),
         ]);
-        readPdf = async () => ({
-          body: fileBytes,
-          contentType: file.type || "application/pdf",
-          filename: file.name || "document.pdf",
-        });
+        readPdf = async () => pdfs;
       } else if (contentType.toLowerCase().includes("application/json")) {
         const body = parseJson(new TextDecoder().decode(raw));
-        const uploadId =
-          typeof body === "object" && body !== null
-            ? (body as { uploadId?: unknown }).uploadId
-            : undefined;
-        const key =
-          typeof uploadId === "string"
-            ? pendingUploadKeyFor(context.actor.userId, uploadId)
-            : null;
+        const uploads = readUploadReferences(body, context.actor.userId);
 
-        if (!key) {
-          return apiError(
-            400,
-            "invalid_request",
-            "Send multipart/form-data with the PDF, or JSON with the uploadId from POST /api/v1/uploads.",
-          );
+        if (typeof uploads === "string") {
+          return apiError(400, "invalid_request", uploads);
         }
 
-        const filename =
-          typeof (body as { filename?: unknown }).filename === "string"
-            ? String((body as { filename: string }).filename).slice(0, 255)
-            : "document.pdf";
         const storageService = createStorageService();
 
         data = body;
-        readPdf = async () => ({
-          body: await readPendingUpload({
-            key,
-            storageService,
-            userId: context.actor.userId,
-          }),
-          contentType: "application/pdf",
-          filename,
-        });
-        cleanUp = () => discardPendingUpload({ key, storageService });
+        // One after another, each read only up to what is left of the
+        // upload limit, so together they are held to it as one file is.
+        readPdf = async () => {
+          const pdfs: SourcePdf[] = [];
+          let totalBytes = 0;
+
+          for (const { filename, key } of uploads) {
+            const pdf = await readPendingUpload({
+              key,
+              maxBytes: MAX_UPLOAD_SIZE_BYTES - totalBytes,
+              storageService,
+              userId: context.actor.userId,
+            }).catch((error: unknown) => {
+              if (
+                uploads.length > 1 &&
+                error instanceof DocumentImportError &&
+                error.code === "too_large"
+              ) {
+                throw new DocumentImportError("too_large_together");
+              }
+
+              throw error;
+            });
+
+            totalBytes += pdf.length;
+            pdfs.push({ body: pdf, contentType: "application/pdf", filename });
+          }
+
+          return pdfs;
+        };
+        cleanUp = async () => {
+          await Promise.all(
+            uploads.map(({ key }) =>
+              discardPendingUpload({ key, storageService }),
+            ),
+          );
+        };
       } else {
         return apiError(
           400,
@@ -243,6 +277,74 @@ export async function POST(request: Request) {
       );
     },
   );
+}
+
+/**
+ * The pending uploads a JSON create names: `uploadId` (and `filename`) for
+ * one PDF, or (Signly) `uploads: [{ uploadId, filename }]` for several, in
+ * order. Returns what is wrong as a message instead.
+ */
+function readUploadReferences(
+  body: unknown,
+  userId: string,
+): Array<{ filename: string; key: string }> | string {
+  const missing =
+    "Send multipart/form-data with the PDF, or JSON with the uploadId from POST /api/v1/uploads.";
+
+  if (typeof body !== "object" || body === null) {
+    return missing;
+  }
+
+  const { filename, uploadId, uploads } = body as {
+    filename?: unknown;
+    uploadId?: unknown;
+    uploads?: unknown;
+  };
+  const entries: Array<{ filename?: unknown; uploadId?: unknown }> =
+    uploads === undefined
+      ? [{ filename, uploadId }]
+      : Array.isArray(uploads)
+        ? (uploads as Array<{ filename?: unknown; uploadId?: unknown }>)
+        : [];
+
+  if (uploads !== undefined && uploadId !== undefined) {
+    return "Send either uploadId or uploads, not both.";
+  }
+
+  if (entries.length === 0) {
+    return "uploads: list at least one { uploadId, filename }.";
+  }
+
+  if (entries.length > MAX_DOCUMENTS_PER_ENVELOPE) {
+    return `uploads: at most ${String(MAX_DOCUMENTS_PER_ENVELOPE)} documents.`;
+  }
+
+  const references: Array<{ filename: string; key: string }> = [];
+
+  for (const entry of entries) {
+    const key =
+      typeof entry?.uploadId === "string"
+        ? pendingUploadKeyFor(userId, entry.uploadId)
+        : null;
+
+    if (!key) {
+      return missing;
+    }
+
+    if (references.some((reference) => reference.key === key)) {
+      return "uploads: each uploadId may be given once.";
+    }
+
+    references.push({
+      filename:
+        typeof entry.filename === "string"
+          ? entry.filename.slice(0, 255)
+          : "document.pdf",
+      key,
+    });
+  }
+
+  return references;
 }
 
 function parseJson(text: string): unknown {

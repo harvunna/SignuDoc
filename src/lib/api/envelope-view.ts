@@ -7,6 +7,7 @@ import {
   type DbExecutor,
   type DbPool,
 } from "../db/connection.ts";
+import { listEnvelopeDocuments } from "../envelope-documents.ts";
 import { signingStepOf } from "../signing-steps.ts";
 import type {
   EnvelopeStatus,
@@ -42,6 +43,15 @@ export type ApiSigner = {
   viewedAt: string | null;
 };
 
+export type ApiDocument = {
+  firstPage: number;
+  name: string;
+  pageCount: number;
+  /** SHA-256 of the file as it was uploaded. */
+  sha256: string;
+  sizeBytes: number;
+};
+
 export type ApiEnvelope = {
   completedAt: string | null;
   copyRecipients: Array<{ email: string; id: string; name: string }>;
@@ -49,6 +59,12 @@ export type ApiEnvelope = {
   declinedAt: string | null;
   /** "email", or "embedded" when signers sign inside the calling app. */
   delivery: "email" | "embedded";
+  /**
+   * Signly: the documents the envelope is made of, in order, and which
+   * pages of its one PDF each became. One entry for an envelope of one
+   * file.
+   */
+  documents: ApiDocument[];
   expired: boolean;
   expiresAt: string | null;
   files: { certificate: string | null; signed: string | null };
@@ -72,6 +88,10 @@ export function isoTime(seconds: number | null | undefined): string | null {
 
 type EnvelopeRow = {
   apiMetadata: Record<string, unknown> | null;
+  documents: unknown;
+  sourcePdfFilename: string;
+  sourcePdfHash: string;
+  sourcePdfSizeBytes: number;
   delivery: "email" | "embedded";
   completedAt: number | null;
   createdAt: number;
@@ -119,6 +139,10 @@ const ENVELOPE_COLUMNS = `
   e.signature_level AS "signatureLevel",
   e.api_metadata AS "apiMetadata",
   e.delivery,
+  e.documents,
+  e.source_pdf_filename AS "sourcePdfFilename",
+  e.source_pdf_hash AS "sourcePdfHash",
+  e.source_pdf_size_bytes AS "sourcePdfSizeBytes",
   e.created_at AS "createdAt"
 `;
 
@@ -197,6 +221,13 @@ export function toApiEnvelope(
     createdAt: isoTime(row.createdAt) ?? new Date(0).toISOString(),
     declinedAt: isoTime(row.declinedAt),
     delivery: row.delivery,
+    documents: listEnvelopeDocuments(row).map((document) => ({
+      firstPage: document.firstPage,
+      name: document.name,
+      pageCount: document.pageCount,
+      sha256: document.sha256,
+      sizeBytes: document.sizeBytes,
+    })),
     expired:
       row.status === "sent" && row.expiresAt !== null && row.expiresAt <= now,
     expiresAt: isoTime(row.expiresAt),

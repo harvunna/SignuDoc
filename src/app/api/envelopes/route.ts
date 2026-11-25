@@ -26,7 +26,13 @@ import {
   type StorageService,
 } from "@/lib/services/storage";
 import { isPendingUploadKey } from "@/lib/services/storage-keys";
-import { MAX_REQUEST_BODY_BYTES } from "@/lib/types/domain";
+import {
+  MAX_DOCUMENTS_PER_ENVELOPE,
+  MAX_REQUEST_BODY_BYTES,
+  MAX_UPLOAD_SIZE_BYTES,
+} from "@/lib/types/domain";
+
+const tooManyDocumentsMessage = `An envelope can hold up to ${String(MAX_DOCUMENTS_PER_ENVELOPE)} documents.`;
 
 export async function POST(request: Request) {
   const sessionResult = await requireVerifiedSenderSession(request);
@@ -64,7 +70,7 @@ export async function POST(request: Request) {
     const result = await createDraftEnvelope(
       session.user.id,
       {
-        sourcePdf: await draftRequest.readSourcePdf(),
+        sourcePdf: await draftRequest.readSourcePdfs(),
         title: draftRequest.title,
       },
       {
@@ -108,7 +114,8 @@ type SourcePdf = {
 
 type DraftRequest = {
   cleanUp: () => Promise<void>;
-  readSourcePdf: () => Promise<SourcePdf>;
+  /** Signly: one or more PDFs, in the order the sender put them. */
+  readSourcePdfs: () => Promise<SourcePdf[]>;
   title: string;
 };
 
@@ -141,31 +148,53 @@ async function readFormRequest(
   }
 
   const parsedTitle = envelopeTitleSchema.safeParse(formData.get("title"));
-  const uploadedFile = formData.get("file");
+  // Signly: every "file" part is a document, in the order sent.
+  const uploadedFiles = formData.getAll("file");
 
   if (!parsedTitle.success) {
     return invalidRequest(parsedTitle.error.issues[0]?.message);
   }
 
-  if (!(uploadedFile instanceof File)) {
+  if (
+    uploadedFiles.length === 0 ||
+    !uploadedFiles.every((file) => file instanceof File)
+  ) {
     return invalidRequest("A PDF file is required.");
+  }
+
+  if (uploadedFiles.length > MAX_DOCUMENTS_PER_ENVELOPE) {
+    return invalidRequest(tooManyDocumentsMessage);
   }
 
   return {
     cleanUp: async () => undefined,
-    readSourcePdf: async () => ({
-      body: new Uint8Array(await uploadedFile.arrayBuffer()),
-      contentType: uploadedFile.type,
-      filename: uploadedFile.name,
-    }),
+    readSourcePdfs: async () =>
+      Promise.all(
+        (uploadedFiles as File[]).map(async (uploadedFile) => ({
+          body: new Uint8Array(await uploadedFile.arrayBuffer()),
+          contentType: uploadedFile.type,
+          filename: uploadedFile.name,
+        })),
+      ),
     title: parsedTitle.data,
   };
 }
 
-const directUploadRequestSchema = z.object({
+const directUploadSchema = z.object({
   filename: z.string().trim().min(1).max(255),
-  title: envelopeTitleSchema,
   uploadKey: z.string().min(1).max(512),
+});
+
+// One upload as before, or (Signly) several under "documents", in order.
+const directUploadRequestSchema = z.object({
+  documents: z
+    .array(directUploadSchema)
+    .min(1)
+    .max(MAX_DOCUMENTS_PER_ENVELOPE, tooManyDocumentsMessage)
+    .optional(),
+  filename: directUploadSchema.shape.filename.optional(),
+  title: envelopeTitleSchema,
+  uploadKey: directUploadSchema.shape.uploadKey.optional(),
 });
 
 // The browser has already sent the PDF straight to storage and names where
@@ -187,15 +216,27 @@ async function readDirectUploadRequest(
     const issue = parsedRequest.error.issues[0];
 
     return invalidRequest(
-      issue?.path[0] === "title" ? issue.message : undefined,
+      issue?.path[0] === "title" ||
+        (issue?.path[0] === "documents" && issue.path.length === 1)
+        ? issue.message
+        : undefined,
     );
   }
 
-  const { filename, title, uploadKey } = parsedRequest.data;
+  const { documents, filename, title, uploadKey } = parsedRequest.data;
+  const uploads =
+    documents ?? (filename && uploadKey ? [{ filename, uploadKey }] : null);
+
+  if (!uploads) {
+    return invalidRequest();
+  }
 
   // Checked here as well as on read, so that nothing outside the user's
   // own pending folder can ever be handed to cleanUp.
-  if (!isPendingUploadKey(uploadKey, userId)) {
+  if (
+    uploads.some(({ uploadKey }) => !isPendingUploadKey(uploadKey, userId)) ||
+    new Set(uploads.map(({ uploadKey }) => uploadKey)).size !== uploads.length
+  ) {
     return invalidRequest("Invalid upload reference.");
   }
 
@@ -205,21 +246,49 @@ async function readDirectUploadRequest(
   return {
     cleanUp: async () => {
       if (storageService) {
-        await discardPendingUpload({ key: uploadKey, storageService });
+        const service = storageService;
+
+        await Promise.all(
+          uploads.map(({ uploadKey }) =>
+            discardPendingUpload({ key: uploadKey, storageService: service }),
+          ),
+        );
       }
     },
-    readSourcePdf: async () => {
-      storageService = createStorageService();
+    readSourcePdfs: async () => {
+      const service = createStorageService();
 
-      return {
-        body: await readPendingUpload({
+      storageService = service;
+
+      // One after another, so a request never holds more than the files
+      // it has read so far; together they are held to the upload limit.
+      const sourcePdfs: SourcePdf[] = [];
+      let totalBytes = 0;
+
+      for (const { filename, uploadKey } of uploads) {
+        const body = await readPendingUpload({
           key: uploadKey,
-          storageService,
+          // Reading stops at what is left of the limit for all of them.
+          maxBytes: MAX_UPLOAD_SIZE_BYTES - totalBytes,
+          storageService: service,
           userId,
-        }),
-        contentType: "application/pdf",
-        filename,
-      };
+        }).catch((error: unknown) => {
+          if (
+            uploads.length > 1 &&
+            error instanceof DocumentImportError &&
+            error.code === "too_large"
+          ) {
+            throw new DocumentImportError("too_large_together");
+          }
+
+          throw error;
+        });
+
+        totalBytes += body.length;
+        sourcePdfs.push({ body, contentType: "application/pdf", filename });
+      }
+
+      return sourcePdfs;
     },
     title,
   };

@@ -36,6 +36,8 @@ type EnvelopeRow = {
   completedAt: number | null;
   createdAt: number;
   declinedAt: number | null;
+  /** Signly: printed on the certificate. See envelope-documents.ts. */
+  documents?: unknown;
   evidenceKey: string | null;
   id: string;
   pageCount: number;
@@ -213,6 +215,7 @@ async function getEnvelopeById(
         signed_pdf_key AS "signedPdfKey",
         evidence_key AS "evidenceKey",
         source_pdf_hash AS "sourcePdfHash",
+        documents,
         signed_pdf_sha256 AS "signedPdfSha256",
         evidence_sha256 AS "evidenceSha256",
         recipient_evidence_sha256 AS "recipientEvidenceSha256",
@@ -251,6 +254,7 @@ async function getEnvelopeByIdForUser(
         signed_pdf_key AS "signedPdfKey",
         evidence_key AS "evidenceKey",
         source_pdf_hash AS "sourcePdfHash",
+        documents,
         signed_pdf_sha256 AS "signedPdfSha256",
         evidence_sha256 AS "evidenceSha256",
         recipient_evidence_sha256 AS "recipientEvidenceSha256",
