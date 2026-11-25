@@ -52,7 +52,7 @@ All changes here are small and text-only, except the Swagger page.
   `public/swagger-ui/`. Check the bundle still has no `eval` (the CSP has no
   `'unsafe-eval'` in production).
 
-### 2. Product name shown as Signly
+### 2. Product name shown as GCM eSign
 
 Only text people see. Internal identifiers keep the SignuDoc name on purpose
 (seal and secret key contexts such as `signudoc/seal-key/v1`, the
@@ -67,10 +67,15 @@ two-step sign-in keys, sessions and integrations.
   "... uses Signudoc to collect ...".
 - `src/lib/permitted-uses.ts`: headings "What this e-signature service is"
   and "What this e-signature service is not".
-- `src/lib/api/openapi.ts`: `info.title` "Signly API" and a Signly
-  description.
+- `src/lib/api/openapi.ts`: `info.title` "GCM eSign API" and a GCM eSign
+  description. `src/app/api/v1/route.ts`: the Swagger page title and header.
 - The name in the header, page titles and emails comes from Settings >
-  Organization > Organization name ("Signly"), not from code.
+  Organization > Organization name ("GCM eSign"), not from code.
+- The default brand color is GCM navy `#1e3a8a` (`DEFAULT_BRAND_COLOR` and
+  `DEFAULT_BRAND_PALETTE` in `src/lib/brand-color.ts`, the accent variables in
+  `src/app/globals.css`, and `src/app/icon.svg`). Keep the three in step.
+- Not renamed on purpose: the "Signly:" markers in code comments and test
+  names. They only mark code added in this fork and are never shown.
 - Not changed: the "SignuDoc" section of Settings (version and updates),
   shown to administrators only.
 

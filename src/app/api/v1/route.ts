@@ -14,7 +14,7 @@ const html = `<!doctype html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Signly API v1 - Reference</title>
+    <title>GCM eSign API v1 - Reference</title>
     <link rel="stylesheet" href="/swagger-ui/swagger-ui.css" />
     <style>
       body { margin: 0; background: #fafafa; }
@@ -28,7 +28,7 @@ const html = `<!doctype html>
     </style>
   </head>
   <body>
-    <div class="signly-header">Signly API <span>v1 &middot; Authorize with your sdk_ API key</span></div>
+    <div class="signly-header">GCM eSign API <span>v1 &middot; Authorize with your sdk_ API key</span></div>
     <div id="swagger-ui"></div>
     <script src="/swagger-ui/swagger-ui-bundle.js"></script>
     <script>
