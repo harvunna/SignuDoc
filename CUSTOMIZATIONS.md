@@ -104,7 +104,41 @@ envelopes and templates (those queries were already per user).
   rules above: a key acts only as its owner, and nothing that lists the
   whole install answers a non-administrator's key.
 
-### 4. Several documents in one envelope
+### 4. Reports page (`/reports`)
+
+A report of the envelopes sent in a period (last 7, 30 or 90 days, this
+month, or a custom range, all in UTC): how many were sent, completed,
+declined, voided, expired or are still waiting; the completion rate; the
+median and average time to complete; a row per sender; and the open
+envelopes waiting longest, with links. Downloadable as CSV.
+
+- Whose envelopes: the dashboard's rules, reused (`sharesTeamCondition` in
+  `src/lib/envelope-access.ts`). "My envelopes" for everyone; "My team"
+  (own plus teammates' sent ones) for someone on a team; "Everyone" for an
+  administrator only. Drafts are never counted.
+- `src/lib/reports.ts`: period parsing, the three parameterized queries
+  (totals, per sender, waiting longest) and the CSV (formula-safe, via
+  `toCsv` from `src/lib/audit-export.ts`). Asking for "Everyone" without
+  the admin role is refused in the library too, not only in the page.
+- `src/app/(app)/reports/page.tsx` and `src/components/reports/reports-shell.tsx`:
+  the page, drawn on the server. Choices are links and a GET form; the
+  charts are HTML bars, so nothing needs a script beyond the CSP.
+- `src/app/api/reports/envelopes/route.ts`: the CSV download. Signed-in
+  session, rate limit (60 per 10 minutes). A file of team or everyone's
+  envelopes is recorded in the install's audit trail as
+  `envelope_file_downloaded` with `file: "envelope_report"`
+  (label added in `src/components/settings/security-panel.tsx`).
+- `src/components/layout/nav-items.tsx` and `app-shell.tsx`: "Reports" in
+  the top navigation.
+- `db/migrations/20261124090000_envelope_reports_index.sql`: an index on
+  `envelopes.sent_at` (adds no data, safe on existing rows).
+- Tests: `src/lib/reports.test.ts`, `src/lib/reports.dbtest.ts` (numbers and
+  scoping).
+- Risk: if SignuDoc changes the visibility rules in `envelope-access.ts` or
+  `envelopes.ts`, check `reportScopeClause` in `src/lib/reports.ts` still
+  matches them.
+
+### 5. Several documents in one envelope
 
 SignuDoc allows one PDF per envelope. Signly lets the sender upload up to 10
 PDFs (20 MB and 1000 pages in total), put them in order and remove them
@@ -184,6 +218,10 @@ repository. Recreate them if the install is ever rebuilt.
 - [ ] New envelope: upload a PDF (Blob storage works).
 - [ ] Settings > Email setup says "Email is working".
 - [ ] Settings > Webhooks > Send test answers 200.
+- [ ] Reports (top navigation) shows the last 30 days; a non-admin sees only
+      "My envelopes" (and "My team" if on a team), an administrator also
+      "Everyone"; Download CSV gives the same numbers.
+
 - [ ] New envelope with two or three PDFs (one over 4 MB): reorder them,
       remove one, continue. The builder and the signing page name each
       document and "Go to document" jumps; sign fields in two documents; the
