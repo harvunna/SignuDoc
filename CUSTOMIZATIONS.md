@@ -104,6 +104,61 @@ envelopes and templates (those queries were already per user).
   rules above: a key acts only as its owner, and nothing that lists the
   whole install answers a non-administrator's key.
 
+### 4. Several documents in one envelope
+
+SignuDoc allows one PDF per envelope. Signly lets the sender upload up to 10
+PDFs (20 MB and 1000 pages in total), put them in order and remove them
+before continuing. When the draft is made, the files are joined into the
+envelope's one source PDF, and a list of the original files (name, first
+page, page count, size, SHA-256) is kept with the envelope. Fields, signing,
+stamping, sealing, verification, downloads and webhooks are unchanged: they
+work on that one PDF. The list is only used to show each document by name.
+Joining drops interactive form fields, bookmarks and scripts of the
+uploaded files; none of these is used by signing.
+
+- New migration `db/migrations/20261124090000_envelope_documents.sql`:
+  nullable `documents` jsonb on `envelopes` and `templates`. Null means one
+  document (every envelope before this, and every single-file envelope).
+- New `src/lib/services/document-combine.ts` (joins and checks the files),
+  `src/lib/envelope-documents.ts` (reads the list; used by server and
+  pages), and their tests `document-combine.test.ts`,
+  `envelope-documents.test.ts`, `envelope-documents.dbtest.ts`.
+- `src/lib/types/domain.ts`: `MAX_DOCUMENTS_PER_ENVELOPE` (10).
+- `src/lib/services/document-import.ts`: messages for too many documents
+  and too large together.
+- `src/lib/schemas/envelope.ts`: `envelopeDocumentSchema`; optional
+  `documents` on the envelope record. `src/lib/schemas/signing.ts`:
+  optional `documents` in the signing payload.
+- `src/lib/envelopes.ts`: `createDraftEnvelope` takes one PDF or several;
+  the list is stored, copied with an envelope, read with it, and given to
+  the builder (`PrepareEnvelopeData.documents`) and the review page.
+- `src/lib/templates.ts`: a template keeps the list; envelopes started from
+  it are split the same way; the list shows "3 documents, 12 pages".
+- `src/lib/signing.ts`, `src/lib/downloads.ts`: read the list so the
+  signing page and the certificate can show it.
+- `src/lib/services/pdf-finalize.ts`: the certificate of completion lists
+  each document with its pages and SHA-256 (the "Source PDF" line stays for
+  one document).
+- `src/app/api/envelopes/route.ts`: several `file` form parts, or
+  `documents: [{ filename, uploadKey }]` for direct (Blob) uploads; the
+  files are read one at a time and held to 20 MB together.
+- `src/components/envelopes/upload-shell.tsx`: choose or drop several PDFs,
+  reorder (up/down) and remove; each goes to Blob on its own when direct
+  uploads are on, so the 4.5 MB request limit still does not apply.
+- `src/components/envelopes/prepare-live-shell.tsx`,
+  `src/components/signing/signing-live-shell.tsx`: the page bar names the
+  document and page ("Offer.pdf, page 2 of 3") and a "Go to document" list
+  jumps between documents; the signer's field list names the document.
+- `src/components/envelopes/review-shell.tsx`: lists the documents.
+- API: `src/app/api/v1/envelopes/route.ts` takes several `file` parts, or
+  `uploads: [{ uploadId, filename }]` with JSON; one file works as before.
+  `src/lib/api/envelopes.ts`: a field may give `document` (1-based) and
+  then counts `page` within it. `src/lib/api/envelope-view.ts`: envelopes
+  carry `documents`. `src/lib/api/route.ts`: "too large together" answers 413. `src/lib/api/openapi.ts` and `docs/api.md` describe all of this.
+- Risk: SignuDoc changes to `createDraftEnvelope`, the envelope SELECTs or
+  the upload page clash on update. Keep the rule: one source PDF per
+  envelope; the list only names its parts.
+
 ## Settings outside the code
 
 These live in Vercel, Resend, Cloudflare and the app, not in this
@@ -129,3 +184,8 @@ repository. Recreate them if the install is ever rebuilt.
 - [ ] New envelope: upload a PDF (Blob storage works).
 - [ ] Settings > Email setup says "Email is working".
 - [ ] Settings > Webhooks > Send test answers 200.
+- [ ] New envelope with two or three PDFs (one over 4 MB): reorder them,
+      remove one, continue. The builder and the signing page name each
+      document and "Go to document" jumps; sign fields in two documents; the
+      certificate lists every document with its pages. A template saved from
+      it says "N documents".

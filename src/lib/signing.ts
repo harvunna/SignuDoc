@@ -4,6 +4,10 @@ import { randomUUID } from "node:crypto";
 import { type Branding } from "./branding.ts";
 import { removeUnclaimedEnvelopeCertificates } from "./certificate-cleanup.ts";
 import {
+  listEnvelopeDocuments,
+  toDocumentViews,
+} from "./envelope-documents.ts";
+import {
   type DbExecutor,
   type DbPool,
   getDb,
@@ -147,6 +151,8 @@ type FieldPersistenceUpdate = {
 
 type SigningEnvelopeRow = {
   completedAt: number | null;
+  /** Signly: see envelope-documents.ts. */
+  documents?: unknown;
   createdAt: number;
   declinedAt: number | null;
   evidenceKey: string | null;
@@ -592,6 +598,7 @@ async function getEnvelopeRow(
           signed_pdf_key AS "signedPdfKey",
           evidence_key AS "evidenceKey",
           source_pdf_hash AS "sourcePdfHash",
+          documents,
           page_count AS "pageCount",
           part11,
           signature_level AS "signatureLevel",
@@ -2177,6 +2184,7 @@ export async function getSigningPayloadForToken(
     envelopeTitle: context.envelope.title,
     pageCount: context.envelope.pageCount,
     pages: context.pages,
+    documents: toDocumentViews(listEnvelopeDocuments(context.envelope)),
     part11:
       context.envelope.part11 && context.signer.signatureMeaning
         ? {

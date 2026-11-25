@@ -36,6 +36,11 @@ import {
   optionsTextToShow,
   parseOptionLines,
 } from "@/lib/field-choices";
+import {
+  describeDocumentPage,
+  findDocumentForPage,
+  toDocumentViews,
+} from "@/lib/envelope-documents";
 import { getInitials } from "@/lib/initials";
 import {
   type FieldPlacement,
@@ -527,6 +532,12 @@ function PrepareLiveShellContent({
   const backHref = `/envelopes/${envelopeId}/signers`;
 
   const pageCount = record.pages.length;
+  // Signly: the documents of an envelope of several, to show where each
+  // begins and to jump to it. Empty for one document.
+  const documents =
+    record.documents.length > 1 ? toDocumentViews(record.documents) : [];
+  const activeDocument = findDocumentForPage(documents, activePage);
+  const activeDocumentLabel = describeDocumentPage(documents, activePage);
   const pageFields = fields.filter((field) => field.page === activePage);
   const activePageRecord =
     record.pages.find((page) => page.pageNumber === activePage) ??
@@ -1049,11 +1060,19 @@ function PrepareLiveShellContent({
                 >
                   <ChevronLeftIcon className="size-4" />
                 </button>
-                <div className="min-w-[7.5rem] text-center">
+                <div className="min-w-[7.5rem] max-w-[16rem] text-center">
                   <p className="sr-only">Document page</p>
                   <p className="text-sm font-bold text-(--fg)">
                     {`Page ${activePage} of ${pageCount}`}
                   </p>
+                  {activeDocumentLabel ? (
+                    <p
+                      className="truncate text-[0.75rem] text-(--secondary)"
+                      title={activeDocumentLabel}
+                    >
+                      {activeDocumentLabel}
+                    </p>
+                  ) : null}
                 </div>
                 <button
                   aria-label="Next page"
@@ -1074,7 +1093,32 @@ function PrepareLiveShellContent({
                 </button>
               </div>
 
-              <div className="flex justify-center lg:justify-end">
+              <div className="flex flex-wrap items-center justify-center gap-3 lg:justify-end">
+                {documents.length > 1 ? (
+                  <select
+                    aria-label="Go to document"
+                    className="field-input max-w-[14rem] py-1.5 text-sm"
+                    onChange={(event) =>
+                      changePage(
+                        Number(event.target.value),
+                        pageCount,
+                        setActivePage,
+                        setSelectedFieldId,
+                        setArmedTool,
+                      )
+                    }
+                    value={String(activeDocument?.firstPage ?? 1)}
+                  >
+                    {documents.map((document) => (
+                      <option
+                        key={document.index}
+                        value={String(document.firstPage)}
+                      >
+                        {`${String(document.index)}. ${document.name}`}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
                 <SaveStatusIndicator
                   onRetrySave={() =>
                     void persistFields(currentFieldsRef.current)

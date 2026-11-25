@@ -12,6 +12,10 @@ import type { SignerRecord } from "../schemas/signer.ts";
 import { buildSignatureManifestation } from "../signature-meanings.ts";
 import { hasSharedSigningStep, signingStepOf } from "../signing-steps.ts";
 import { describeSignerCorrectedEvent } from "./audit.ts";
+import {
+  describePageRange,
+  listEnvelopeDocuments,
+} from "../envelope-documents.ts";
 import { isCapturedMessageId } from "./captured-email.ts";
 import { canonicalJson } from "../utils/canonical-json.ts";
 import { normalizedRectToPdfRect } from "../utils/pdf-coords.ts";
@@ -1027,11 +1031,38 @@ function buildAuditLines(input: {
     input.fonts.regular,
     bodyFontSize,
   );
-  pushParagraph(
-    `Source PDF: ${input.envelope.sourcePdfFilename}`,
-    input.fonts.regular,
-    bodyFontSize,
-  );
+  // Signly: an envelope of several documents lists each one, with the
+  // pages of the signed PDF it became and the hash of the file as uploaded,
+  // so each original can be matched to its part of the signed document.
+  const documents = listEnvelopeDocuments(input.envelope);
+
+  if (documents.length > 1) {
+    pushParagraph(
+      `Documents (${String(documents.length)}), combined into one PDF in this order:`,
+      input.fonts.regular,
+      bodyFontSize,
+    );
+
+    documents.forEach((document, index) => {
+      pushParagraph(
+        `   ${String(index + 1)}. ${document.name} | ${describePageRange(document)} | SHA-256 ${document.sha256}`,
+        input.fonts.regular,
+        bodyFontSize,
+      );
+    });
+    pushParagraph(
+      `Combined source PDF: ${input.envelope.sourcePdfFilename}`,
+      input.fonts.regular,
+      bodyFontSize,
+    );
+  } else {
+    pushParagraph(
+      `Source PDF: ${input.envelope.sourcePdfFilename}`,
+      input.fonts.regular,
+      bodyFontSize,
+    );
+  }
+
   pushParagraph(
     `Source document hash: ${input.envelope.sourcePdfHash}`,
     input.fonts.regular,
