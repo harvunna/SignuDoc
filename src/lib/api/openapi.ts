@@ -516,8 +516,8 @@ export function buildOpenApiDocument(
     },
     info: {
       description:
-        "Create, send and track envelopes with the Signly e-signature API.",
-      title: "Signly API",
+        "Create, send and track envelopes with the GCM eSign e-signature API.",
+      title: "GCM eSign API",
       version: "1",
     },
     openapi: "3.1.0",

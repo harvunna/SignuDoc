@@ -62,13 +62,13 @@
    * The accent and its shades. An install with its own color replaces all
    * of these together, from a rule the layout adds (see brand-color.ts).
    */
-  --accent: #5340d6;
-  --accent-rgb: 83 64 214;
-  --accent-hover: #4433b8;
-  --accent-soft: #ece9fd;
-  --accent-soft-hover: #e0dbfb;
-  --accent-softer: #f4f2ff;
-  --accent-ink: #4433b8;
+  --accent: #1e3a8a;
+  --accent-rgb: 30 58 138;
+  --accent-hover: #193174;
+  --accent-soft: #e6e9f2;
+  --accent-soft-hover: #d7dcea;
+  --accent-softer: #f0f2f7;
+  --accent-ink: #193174;
   --danger: #b42318;
   --danger-hover: #912018;
   --danger-soft: #fdebea;
