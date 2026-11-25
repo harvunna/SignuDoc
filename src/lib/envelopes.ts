@@ -52,6 +52,10 @@ import {
   type ReplaceFieldsResponse,
 } from "./schemas/field.ts";
 import {
+  discardSignerAttachmentUploads,
+  listEnvelopeAttachments,
+} from "./signer-attachments.ts";
+import {
   correctSentSignerResponseSchema,
   correctSentSignerSchema,
   duplicateCopyRecipientEmailMessage,
@@ -307,7 +311,8 @@ function shouldCountFieldForSignerSummary(
   if (
     field.type === "text" ||
     field.type === "number" ||
-    field.type === "dropdown"
+    field.type === "dropdown" ||
+    field.type === "attachment"
   ) {
     return true;
   }
@@ -355,6 +360,7 @@ export type DashboardEnvelopeListItem = {
 };
 
 type ReviewFieldSummary =
+  | "Attachment"
   | "Checkbox"
   | "Date"
   | "Dropdown"
@@ -404,6 +410,8 @@ export type DraftSignerStepSigner = {
   name: string;
   order: number;
   requireEmailCode?: boolean;
+  /** Signly: signs on the sender's device. Set on the signers step only. */
+  inPerson?: boolean;
   /** A signer, or an approver who has no fields. */
   role: RecipientRole;
   /** Set on the signers step only. */
@@ -442,12 +450,23 @@ export type EnvelopeDetailSignerView = {
   metaLabel: string;
   name: string;
   order: number;
+  /** Signly: signs on the sender's device; never emailed a link. */
+  inPerson: boolean;
   /** An approver's "signed" is an approval and "declined" a rejection. */
   role: RecipientRole;
   status: "declined" | "pending" | "signed" | "waiting";
   statusDateLabel?: string;
   /** The step of the signing order; signers who share one sign together. */
   step: number;
+};
+
+/** Signly: a file a signer attached, as the envelope's page lists it. */
+export type EnvelopeDetailAttachment = {
+  downloadUrl: string;
+  fieldId: string;
+  fileName: string;
+  signerName: string;
+  sizeLabel: string;
 };
 
 export type EnvelopeDetailTimelineItem = {
@@ -470,6 +489,8 @@ export type EnvelopeDetailDeadline = {
 };
 
 export type EnvelopeDetailData = {
+  /** Signly: files signers attached, once they signed. */
+  attachments: readonly EnvelopeDetailAttachment[];
   /** People who get a copy of the finished document without signing. */
   copyRecipients: readonly CopyRecipientRecord[];
   createdAtLabel: string;
@@ -559,6 +580,7 @@ const FIELD_TYPE_SUMMARY_LABELS: Record<
   FieldRecord["type"],
   ReviewFieldSummary
 > = {
+  attachment: "Attachment",
   checkbox: "Checkbox",
   date: "Date",
   dropdown: "Dropdown",
@@ -571,6 +593,7 @@ const FIELD_TYPE_SUMMARY_LABELS: Record<
 };
 
 const FIELD_TYPE_SORT_ORDER: Record<FieldRecord["type"], number> = {
+  attachment: 9,
   checkbox: 7,
   date: 2,
   dropdown: 6,
@@ -1003,9 +1026,10 @@ export async function copyEnvelopeToDraft(
               require_email_code,
               signature_meaning,
               signing_step,
-              role
+              role,
+              in_person
             ) VALUES (
-              $1, $2, $3, $4, $5, 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, $6, $7, $8, $9, $10, $11, $12
+              $1, $2, $3, $4, $5, 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, $6, $7, $8, $9, $10, $11, $12, $13
             )
           `,
           [
@@ -1022,6 +1046,8 @@ export async function copyEnvelopeToDraft(
             signingStepOf(signer),
             // An approver stays an approver in the copy.
             signer.role ?? "signer",
+            // Signly: so does someone who signs in person.
+            checks.get(signer.id)?.inPerson ?? false,
           ],
         );
       }
@@ -1372,6 +1398,7 @@ async function listSignerCheckSettings(
     string,
     {
       hasAccessCode: boolean;
+      inPerson: boolean;
       requireEmailCode: boolean;
       signatureMeaning: SignatureMeaning | null;
     }
@@ -1380,6 +1407,7 @@ async function listSignerCheckSettings(
   const rows = await queryMany<{
     hasAccessCode: boolean;
     id: string;
+    inPerson: boolean;
     requireEmailCode: boolean;
     signatureMeaning: string | null;
   }>(
@@ -1389,7 +1417,8 @@ async function listSignerCheckSettings(
         id,
         access_code_hash IS NOT NULL AS "hasAccessCode",
         require_email_code AS "requireEmailCode",
-        signature_meaning AS "signatureMeaning"
+        signature_meaning AS "signatureMeaning",
+        in_person AS "inPerson"
       FROM signers
       WHERE envelope_id = $1
     `,
@@ -1401,6 +1430,7 @@ async function listSignerCheckSettings(
       row.id,
       {
         hasAccessCode: Boolean(row.hasAccessCode),
+        inPerson: Boolean(row.inPerson),
         requireEmailCode: Boolean(row.requireEmailCode),
         signatureMeaning: parseSignatureMeaning(row.signatureMeaning),
       },
@@ -1854,7 +1884,16 @@ function buildTimelineDescription(event: AuditEventRecord): string {
         ? `Signed by ${targetLabel} (${signatureMeaningLabel(parseSignatureMeaning(event.metadata.part11.meaning)) ?? event.metadata.part11.meaning}, password given again)`
         : describeProviderSignature(event.metadata)
           ? `Signed by ${targetLabel} ${describeProviderSignature(event.metadata)!}`
-          : `Signed by ${targetLabel}`;
+          : // Signly: signed on the sender's device, in a hosted session.
+            event.metadata?.inPerson
+            ? `Signed in person by ${targetLabel}, hosted by ${
+                typeof event.metadata.inPerson === "object" &&
+                "hostEmail" in event.metadata.inPerson &&
+                typeof event.metadata.inPerson.hostEmail === "string"
+                  ? event.metadata.inPerson.hostEmail
+                  : "the sender"
+              }`
+            : `Signed by ${targetLabel}`;
     case "declined":
       return declineReason
         ? `Declined by ${targetLabel} — ${declineReason}`
@@ -2222,13 +2261,21 @@ export async function getEnvelopeDetailDataForUser(
     return null;
   }
 
-  const [signersByEnvelope, fieldsByEnvelope, auditEvents, copyRecipients] =
-    await Promise.all([
-      listSignersForEnvelopeIds([envelopeId], database),
-      listFieldsForEnvelopeIds([envelopeId], database),
-      listAuditEventsForEnvelope(envelopeId, database),
-      listCopyRecipientsForEnvelopeId(envelopeId, database),
-    ]);
+  const [
+    signersByEnvelope,
+    fieldsByEnvelope,
+    auditEvents,
+    copyRecipients,
+    signerChecks,
+    attachments,
+  ] = await Promise.all([
+    listSignersForEnvelopeIds([envelopeId], database),
+    listFieldsForEnvelopeIds([envelopeId], database),
+    listAuditEventsForEnvelope(envelopeId, database),
+    listCopyRecipientsForEnvelopeId(envelopeId, database),
+    listSignerCheckSettings(envelopeId, database),
+    listEnvelopeAttachments(envelopeId, database),
+  ]);
   const signers = signersByEnvelope.get(envelopeId) ?? [];
   const fields = fieldsByEnvelope.get(envelopeId) ?? [];
   const fieldCountsBySigner = new Map(
@@ -2278,6 +2325,7 @@ export async function getEnvelopeDetailDataForUser(
       ),
       name: signer.name,
       order: signer.signOrder,
+      inPerson: signerChecks.get(signer.id)?.inPerson ?? false,
       role: signer.role ?? "signer",
       status: signerStatus,
       statusDateLabel: buildDetailSignerStatusLabel(
@@ -2291,8 +2339,11 @@ export async function getEnvelopeDetailDataForUser(
   // Everyone whose turn it is. A reminder goes to each of them whose last
   // one is far enough back (reminders.ts), so the button works while any of
   // them can have one.
+  // Signly: not those who sign in person, who are never emailed.
   const waitingSigners = signers.filter(
-    (signer) => signer.status === "notified",
+    (signer) =>
+      signer.status === "notified" &&
+      !(signerChecks.get(signer.id)?.inPerson ?? false),
   );
   let manualReminder: EnvelopeDetailManualReminderState | null = null;
 
@@ -2328,6 +2379,13 @@ export async function getEnvelopeDetailDataForUser(
   }
 
   return {
+    attachments: attachments.map((attachment) => ({
+      downloadUrl: `/api/envelopes/${encodeURIComponent(envelopeId)}/attachments/${encodeURIComponent(attachment.fieldId)}`,
+      fieldId: attachment.fieldId,
+      fileName: attachment.fileName,
+      signerName: attachment.signerName,
+      sizeLabel: formatFileSize(attachment.sizeBytes),
+    })),
     copyRecipients,
     createdAtLabel: formatLongDate(envelope.createdAt),
     deadline:
@@ -2378,6 +2436,7 @@ export async function getDraftSignerStepDataForUser(
         email: signer.email,
         hasAccessCode: checks.get(signer.id)?.hasAccessCode ?? false,
         id: signer.id,
+        inPerson: checks.get(signer.id)?.inPerson ?? false,
         name: signer.name,
         order: signer.signOrder,
         requireEmailCode: checks.get(signer.id)?.requireEmailCode ?? false,
@@ -2999,6 +3058,17 @@ export async function sendDraftEnvelope(
     );
   }
 
+  // Signly: signers who sign in person on the sender's device get no
+  // invitation; the sender opens their session from the envelope's page.
+  const inPersonSignerIds = new Set(
+    [...(await listSignerCheckSettings(envelopeId, database)).entries()]
+      .filter(([, check]) => check.inPerson)
+      .map(([id]) => id),
+  );
+  const emailedFirstSigners = firstSigners.filter(
+    (signer) => !inPersonSignerIds.has(signer.id),
+  );
+
   const emailService = createEmailServiceForSending();
   const storageService = createStorageService();
   const sourcePdfHead = await storageService.headObject(envelope.sourcePdfKey);
@@ -3205,6 +3275,9 @@ export async function sendDraftEnvelope(
           metadata: {
             ...(input.apiKeyId ? { apiKeyId: input.apiKeyId } : {}),
             ...(delivery === "embedded" ? { delivery } : {}),
+            ...(inPersonSignerIds.size > 0
+              ? { inPersonSignerIds: [...inPersonSignerIds] }
+              : {}),
             // The send route refuses a send without this confirmation.
             expiresAt,
             reminderIntervalDays: input.reminderIntervalDays ?? null,
@@ -3240,10 +3313,13 @@ export async function sendDraftEnvelope(
     throw error;
   }
 
-  if (delivery === "embedded") {
+  const invitedFirstSigner = emailedFirstSigners[0];
+
+  if (delivery === "embedded" || !invitedFirstSigner) {
     // No invitation: the app asks the API for a link for each signer
-    // whose turn it is (see embedding.ts). The envelope is out for
-    // signature now, so its envelope.sent webhook can go.
+    // whose turn it is (see embedding.ts), or (Signly) everyone in the
+    // first step signs in person. The envelope is out for signature now,
+    // so its envelope.sent webhook can go.
     await releaseSentWebhook(envelopeId, database).catch((error: unknown) => {
       console.error(
         `Releasing the envelope.sent webhook of ${envelopeId} failed:`,
@@ -3273,18 +3349,18 @@ export async function sendDraftEnvelope(
   try {
     branding = await getBranding();
     invitationMessageIds.set(
-      firstSigner.id,
+      invitedFirstSigner.id,
       (
         await emailService.send(
           buildSigningInvitationEmail({
             branding,
             envelopeTitle: envelope.title,
             expiresAt,
-            role: firstSigner.role,
+            role: invitedFirstSigner.role,
             senderName: input.senderName,
-            signerEmail: firstSigner.email,
-            signerName: firstSigner.name,
-            signingUrl: issuedLinks.get(firstSigner.id)!.url,
+            signerEmail: invitedFirstSigner.email,
+            signerName: invitedFirstSigner.name,
+            signingUrl: issuedLinks.get(invitedFirstSigner.id)!.url,
           }),
         )
       ).messageId,
@@ -3375,7 +3451,7 @@ export async function sendDraftEnvelope(
     throw error;
   }
 
-  for (const signer of firstSigners.slice(1)) {
+  for (const signer of emailedFirstSigners.slice(1)) {
     try {
       invitationMessageIds.set(
         signer.id,
@@ -3654,6 +3730,7 @@ export async function correctSentEnvelopeSigner(
       emailCodeExpiresAt: number | null;
       emailCodeHash: string | null;
       emailCodeSentAt: number | null;
+      inPerson: boolean;
       lastNotifiedAt: number | null;
       name: string;
       role: string;
@@ -3672,6 +3749,7 @@ export async function correctSentEnvelopeSigner(
           email_code_expires_at AS "emailCodeExpiresAt",
           email_code_hash AS "emailCodeHash",
           email_code_sent_at AS "emailCodeSentAt",
+          in_person AS "inPerson",
           last_notified_at AS "lastNotifiedAt",
           name,
           role,
@@ -3746,9 +3824,13 @@ export async function correctSentEnvelopeSigner(
     let tokenHash: string | null = null;
     let tokenExpiresAt: number | null = null;
     let lastNotifiedAt = signer.lastNotifiedAt;
-    const invitationNeeded = signer.status === "notified";
+    // Signly: a signer who signs in person is not emailed. Their link is
+    // still replaced, so a session the sender opened for the previous
+    // person stops working; the sender opens a new one.
+    const invitationNeeded = signer.status === "notified" && !signer.inPerson;
+    const linkReplaced = signer.status === "notified";
 
-    if (invitationNeeded) {
+    if (linkReplaced) {
       const remainingSeconds =
         typeof envelope.expiresAt === "number" &&
         envelope.expiresAt > nowUnixTimestamp
@@ -3766,7 +3848,10 @@ export async function correctSentEnvelopeSigner(
         typeof envelope.expiresAt === "number"
           ? envelope.expiresAt
           : issuedLink.exp;
-      lastNotifiedAt = nowUnixTimestamp;
+
+      if (invitationNeeded) {
+        lastNotifiedAt = nowUnixTimestamp;
+      }
     }
 
     const updatedSigner = await tx.query(
@@ -3783,6 +3868,8 @@ export async function correctSentEnvelopeSigner(
           email_code_expires_at = NULL,
           email_code_attempts = 0,
           email_code_sent_at = NULL,
+          in_person_host_email = NULL,
+          in_person_hosted_at = NULL,
           updated_at = $6
         WHERE id = $7
           AND envelope_id = $8
@@ -3815,6 +3902,10 @@ export async function correctSentEnvelopeSigner(
       `,
       [nowUnixTimestamp, envelopeId],
     );
+
+    // Signly: files the previous person uploaded are theirs, not the
+    // corrected signer's. They are queued for deletion with this change.
+    await discardSignerAttachmentUploads(envelopeId, signerId, [], tx);
 
     if (invitationNeeded && issuedLink) {
       const mailer =
@@ -4599,6 +4690,7 @@ export async function replaceDraftEnvelopeSigners(
       id: persistedSignerId,
       name: signer.name,
       requireEmailCode: signer.requireEmailCode,
+      inPerson: signer.inPerson,
       role: signer.role ?? "signer",
       signatureMeaning: signer.signatureMeaning,
       signOrder: index + 1,
@@ -4644,7 +4736,8 @@ export async function replaceDraftEnvelopeSigners(
               require_email_code = COALESCE($9, require_email_code),
               signature_meaning = CASE WHEN $10::boolean THEN $11 ELSE signature_meaning END,
               signing_step = $12,
-              role = $13
+              role = $13,
+              in_person = COALESCE($14, in_person)
             WHERE id = $5 AND envelope_id = $6
           `,
           [
@@ -4661,6 +4754,7 @@ export async function replaceDraftEnvelopeSigners(
             signer.signatureMeaning ?? null,
             signer.signingStep,
             signer.role,
+            signer.inPerson ?? null,
           ],
         );
 
@@ -4695,9 +4789,10 @@ export async function replaceDraftEnvelopeSigners(
               require_email_code,
               signature_meaning,
               signing_step,
-              role
+              role,
+              in_person
             ) VALUES (
-              $1, $2, $3, $4, $5, 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, $6, $7, $8, $9, $10, $11, $12
+              $1, $2, $3, $4, $5, 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, $6, $7, $8, $9, $10, $11, $12, $13
             )
           `,
           [
@@ -4713,6 +4808,7 @@ export async function replaceDraftEnvelopeSigners(
             signer.signatureMeaning ?? null,
             signer.signingStep,
             signer.role,
+            signer.inPerson ?? false,
           ],
         );
       }
@@ -4771,6 +4867,7 @@ export async function replaceDraftEnvelopeSigners(
         email: signer.email,
         hasAccessCode: checks.get(signer.id)?.hasAccessCode ?? false,
         id: signer.id,
+        inPerson: checks.get(signer.id)?.inPerson ?? false,
         name: signer.name,
         requireEmailCode: checks.get(signer.id)?.requireEmailCode ?? false,
         role: signer.role ?? "signer",

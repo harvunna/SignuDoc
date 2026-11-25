@@ -135,6 +135,12 @@ export function buildOpenApiDocument(
                 properties: {
                   accessCode: { maxLength: 64, minLength: 4, type: "string" },
                   email: { format: "email", type: "string" },
+                  inPerson: {
+                    default: false,
+                    description:
+                      "Signs in person on the sender's device: no invitation or reminder is emailed to them. The sender opens their session from the envelope's page in the web app when it is their turn.",
+                    type: "boolean",
+                  },
                   name: personNameSchema,
                   ref: {
                     description: "Your name for this signer, used by fields.",
@@ -173,6 +179,31 @@ export function buildOpenApiDocument(
         },
         Envelope: {
           properties: {
+            attachments: {
+              description:
+                "Files signers attached in attachment fields, once they signed.",
+              items: {
+                properties: {
+                  contentType: {
+                    enum: ["application/pdf", "image/png", "image/jpeg"],
+                    type: "string",
+                  },
+                  fieldId: { type: "string" },
+                  fileName: { type: "string" },
+                  sha256: { type: "string" },
+                  signerId: { type: "string" },
+                  sizeBytes: { type: "integer" },
+                  submittedAt: isoTime,
+                  url: {
+                    description:
+                      "GET it with the same key: /envelopes/{id}/attachments/{fieldId}.",
+                    type: "string",
+                  },
+                },
+                type: "object",
+              },
+              type: "array",
+            },
             completedAt: isoTime,
             copyRecipients: {
               items: {
@@ -267,7 +298,12 @@ export function buildOpenApiDocument(
             page: { minimum: 1, type: "integer" },
             required: { default: true, type: "boolean" },
             signer: { description: "The signer's ref.", type: "string" },
-            type: { enum: [...fieldTypes], type: "string" },
+            type: {
+              description:
+                "attachment: the signer uploads a file (a PDF, PNG or JPEG of up to 4 MB) while signing; it can be optional. Download it from the envelope's attachments.",
+              enum: [...fieldTypes],
+              type: "string",
+            },
             width: { exclusiveMinimum: 0, maximum: 1, type: "number" },
             x: { maximum: 1, minimum: 0, type: "number" },
             y: { maximum: 1, minimum: 0, type: "number" },
@@ -312,6 +348,11 @@ export function buildOpenApiDocument(
             declinedAt: isoTime,
             email: { type: "string" },
             id: { type: "string" },
+            inPerson: {
+              description:
+                "Signs in person on the sender's device; never emailed a link.",
+              type: "boolean",
+            },
             name: { type: "string" },
             order: { type: "integer" },
             ref: { type: ["string", "null"] },
@@ -600,6 +641,31 @@ export function buildOpenApiDocument(
           summary: "Download the signed PDF or the certificate of completion",
         },
       },
+      "/envelopes/{id}/attachments/{fieldId}": {
+        get: {
+          parameters: [
+            idParameter,
+            {
+              in: "path",
+              name: "fieldId",
+              required: true,
+              schema: { type: "string" },
+            },
+          ],
+          responses: {
+            "200": {
+              content: {
+                "application/pdf": {},
+                "image/jpeg": {},
+                "image/png": {},
+              },
+              description: "The file the signer attached.",
+            },
+            ...errors,
+          },
+          summary: "Download a file a signer attached",
+        },
+      },
       "/envelopes/{id}/remind": {
         post: {
           parameters: [idParameter],
@@ -628,6 +694,42 @@ export function buildOpenApiDocument(
             ...emailErrors,
           },
           summary: "Send a draft",
+        },
+      },
+      "/envelopes/{id}/signers/{signerId}": {
+        patch: {
+          description:
+            "For a signer who has not signed or declined, on an envelope out for signature. Their old link stops working; if it is their turn, a new invitation goes to the corrected address (none for a signer who signs in person). Recorded as signer_corrected in the audit trail. Not for embedded or Part 11 envelopes (409).",
+          parameters: [
+            idParameter,
+            {
+              in: "path",
+              name: "signerId",
+              required: true,
+              schema: { type: "string" },
+            },
+          ],
+          requestBody: {
+            content: {
+              "application/json": {
+                schema: {
+                  description: "A name, an email address, or both.",
+                  properties: {
+                    email: { format: "email", type: "string" },
+                    name: personNameSchema,
+                  },
+                  type: "object",
+                },
+              },
+            },
+            required: true,
+          },
+          responses: {
+            "200": envelopeResponse("The envelope, with the signer corrected."),
+            "413": errorResponse,
+            ...emailErrors,
+          },
+          summary: "Correct a signer's name or email",
         },
       },
       "/envelopes/{id}/signers/{signerId}/embed-link": {

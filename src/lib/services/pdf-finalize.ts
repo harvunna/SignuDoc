@@ -776,8 +776,14 @@ async function drawFieldValue(
     case "name":
     case "text":
     case "number":
-    case "dropdown": {
-      const textValue = field.value?.trim();
+    case "dropdown":
+    case "attachment": {
+      // Signly: an attachment is not put on the document; its box says
+      // which file was attached, and the certificate lists it in full.
+      const textValue =
+        field.type === "attachment" && field.value?.trim()
+          ? `Attached: ${field.value.trim()}`
+          : field.value?.trim();
 
       if (!textValue) {
         return;
@@ -1383,10 +1389,17 @@ function describeSignerEvidence(
     typeof embeddedSource.metadata.embedded === "object"
       ? (embeddedSource.metadata.embedded as Record<string, unknown>)
       : null;
+  // Signly: signed on the sender's device, in a session the sender opened.
+  const inPerson =
+    signed?.metadata?.inPerson && typeof signed.metadata.inPerson === "object"
+      ? (signed.metadata.inPerson as Record<string, unknown>)
+      : null;
   const checks = [
     embedded
       ? describeEmbeddedDelivery(embedded)
-      : "possession of the emailed signing link",
+      : inPerson
+        ? describeInPersonSession(inPerson, redacted)
+        : "possession of the emailed signing link",
     ...readStringArray((signed ?? ended)?.metadata?.authMethods).map(
       (method) => AUTHENTICATION_LABELS[method] ?? method,
     ),
@@ -1434,6 +1447,7 @@ function describeSignerEvidence(
   }
 
   details.push(...describeProviderSignatureEvidence(signed, redacted));
+  details.push(...describeSignerAttachments(signed, redacted));
 
   if (!redacted && signed?.ipAddress) {
     details.push(
@@ -1442,6 +1456,71 @@ function describeSignerEvidence(
   }
 
   return details;
+}
+
+/** Signly: who hosted an in-person signing session, and when. */
+function describeInPersonSession(
+  inPerson: Record<string, unknown>,
+  redacted: boolean,
+): string {
+  const host =
+    !redacted && typeof inPerson.hostEmail === "string"
+      ? ` (${inPerson.hostEmail})`
+      : "";
+  const at =
+    typeof inPerson.hostedAt === "number"
+      ? `, opened at ${formatAuditTimestamp(inPerson.hostedAt)}`
+      : "";
+
+  return `signed in person on a device the sender handed over, in a session hosted by the sender${host}${at}`;
+}
+
+function formatAttachmentSize(sizeBytes: number): string {
+  return sizeBytes >= 1024 * 1024
+    ? `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`
+    : `${String(Math.max(1, Math.round(sizeBytes / 1024)))} KB`;
+}
+
+/**
+ * Signly: the files a signer attached, as the signed audit event recorded
+ * them. The SHA-256 lets anyone check a downloaded file is the one signed
+ * with.
+ */
+export function describeSignerAttachments(
+  signed: AuditEventRecord | undefined,
+  // The copy for signers leaves out the names of another signer's files,
+  // which can say what they are (a passport, a medical form).
+  redacted = false,
+): string[] {
+  const attachments = signed?.metadata?.attachments;
+
+  if (!Array.isArray(attachments)) {
+    return [];
+  }
+
+  return attachments.flatMap((entry: unknown) => {
+    if (!entry || typeof entry !== "object") {
+      return [];
+    }
+
+    const attachment = entry as Record<string, unknown>;
+
+    if (
+      typeof attachment.fileName !== "string" ||
+      typeof attachment.sha256 !== "string" ||
+      typeof attachment.sizeBytes !== "number"
+    ) {
+      return [];
+    }
+
+    const details = `${formatAttachmentSize(attachment.sizeBytes)}, SHA-256 ${attachment.sha256}`;
+
+    return [
+      redacted
+        ? `Attached a file (${details})`
+        : `Attached file: ${attachment.fileName} (${details})`,
+    ];
+  });
 }
 
 function describeEventEvidence(event: AuditEventRecord): string[] {

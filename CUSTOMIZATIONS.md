@@ -104,6 +104,74 @@ envelopes and templates (those queries were already per user).
   rules above: a key acts only as its owner, and nothing that lists the
   whole install answers a non-administrator's key.
 
+### 4. Signer tools: attachments, in-person signing, signer correction in the API
+
+- **Signer attachments.** New field type `attachment`: the sender places it
+  for a signer (required or optional); the signer uploads a PDF, PNG or
+  JPEG of up to 4 MB while signing (the type is read from the file's bytes).
+  - `db/migrations/20261124100000_signer_tools.sql`: `attachment` in
+    `fields_type_check`; table `signer_attachment_uploads` (file name, type,
+    size, SHA-256 of each upload); `signers.in_person`,
+    `in_person_host_email`, `in_person_hosted_at` (below). Safe for existing
+    rows: only adds.
+  - `src/lib/signer-attachments.ts` (new): upload, replace, list, download.
+    Files are stored privately beside the envelope's original
+    (`.../attachments/`, `src/lib/services/storage-keys.ts`). A replaced
+    upload, and uploads not used once the signer signs, go through the
+    `pending_file_deletions` queue.
+  - `src/lib/signing.ts`: the submission names an upload per field
+    (`{type: "attachment", uploadId}`); checked under the signer's lock;
+    the field keeps the file in `image_key` and its name in `value`; the
+    signed audit event lists `attachments` (name, type, size, SHA-256);
+    later signers see "File attached", not the name.
+    `resolveSignerAttachmentTarget` (new export).
+  - `src/lib/retention.ts`: deleting an envelope also deletes its attached
+    files.
+  - Routes: `POST /api/signing/[token]/attachments?fieldId=` (signer,
+    rate-limited), `GET /api/envelopes/[id]/attachments/[fieldId]` (sender,
+    teammates and administrators as for other files, recorded in the
+    install audit log for non-owners), `GET
+/api/v1/envelopes/{id}/attachments/{fieldId}` (API key, own envelopes).
+    Downloads are served as attachments with `nosniff` and a sandbox CSP.
+  - Envelope view: `src/lib/api/envelope-view.ts` (`attachments`),
+    `src/lib/envelopes.ts` (`EnvelopeDetailData.attachments`),
+    `src/components/envelopes/envelope-detail-shell.tsx` ("Attached by
+    signers" with downloads).
+  - Certificate: `src/lib/services/pdf-finalize.ts` lists each file with
+    size and SHA-256 under the signer (name left out in the copy for
+    signers); the field's box on the PDF says "Attached: name".
+  - Editor and signing page: `prepare-live-shell.tsx` (Attachment tool),
+    `review-shell.tsx`, `signing-live-shell.tsx` (file picker on the field).
+  - Types and API: `src/lib/types/domain.ts`, `src/lib/schemas/field.ts`,
+    `src/lib/schemas/signing.ts`, `src/lib/api/openapi.ts`, `docs/api.md`.
+- **In-person signing.** A signer ticked "Signs in person" (signers step,
+  or `inPerson` in the API) is never emailed an invitation or reminder.
+  When it is their turn, the sender clicks "Sign in person" on the
+  envelope's page: `POST /api/envelopes/[id]/signers/[signerId]/in-person`
+  (`src/lib/in-person-signing.ts`, own envelopes only) issues a fresh
+  two-hour link, records who hosted it, and opens the signing page on the
+  sender's device. The signer still passes every check (access code,
+  emailed code, consent). The signed audit event carries `inPerson`
+  (host email and time); the timeline and certificate say "signed in
+  person ... hosted by the sender".
+  - Files: `src/lib/envelopes.ts` (save/copy the flag, send skips their
+    invitation and goes out even when the whole first step signs in person,
+    detail view), `src/lib/signing.ts` (next-step invitations skip them),
+    `src/lib/reminders.ts` (no reminders), `src/lib/schemas/signer.ts`,
+    `src/lib/api/envelopes.ts`, `src/components/envelopes/signers-shell.tsx`.
+  - No new audit event kinds were added (the `signed` event's metadata
+    holds the evidence), so the `audit_events_event_check` constraint is
+    untouched.
+- **Signer correction.** SignuDoc already corrects a waiting signer
+  (migration `20261116100000_signer_corrected.sql`,
+  `correctSentEnvelopeSigner`). Signly adds:
+  `PATCH /api/v1/envelopes/{id}/signers/{signerId}` (same function, same
+  `signer_corrected` event); an in-person signer's link is replaced with no
+  email; a corrected signer's uploaded attachments are discarded.
+- Tests: `src/lib/signer-tools.dbtest.ts`, `src/lib/signer-attachments.test.ts`.
+- Risk: another change to `fields_type_check` (a new field type) must keep
+  `attachment` in the list, or placing one fails.
+
 ## Settings outside the code
 
 These live in Vercel, Resend, Cloudflare and the app, not in this
@@ -129,3 +197,8 @@ repository. Recreate them if the install is ever rebuilt.
 - [ ] New envelope: upload a PDF (Blob storage works).
 - [ ] Settings > Email setup says "Email is working".
 - [ ] Settings > Webhooks > Send test answers 200.
+- [ ] Signer tools: place an Attachment field and tick "Signs in person" for
+      a second signer; the first signer attaches a PDF and signs; the
+      envelope page lists it under "Attached by signers" and downloads it;
+      "Sign in person" opens the signing page for the second signer; the
+      certificate lists the file and "signed in person".

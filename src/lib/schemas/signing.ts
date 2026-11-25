@@ -72,6 +72,11 @@ export const signingPayloadSchema = z.object({
   declineUrl: z.string().trim().min(1),
   /** Checks, as the signer types, that an answer fits its box. */
   fieldFitUrl: z.string().trim().min(1),
+  /**
+   * Signly: where the signer uploads a file for an attachment field (with
+   * ?fieldId=). Absent when they have no attachment field.
+   */
+  attachmentUploadUrl: z.string().trim().min(1).optional(),
   documentUrl: z.string().trim().min(1),
   envelopeId: idSchema,
   envelopeTitle: envelopeTitleSchema,

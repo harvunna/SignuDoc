@@ -46,6 +46,7 @@ type ReviewRecordView = {
 };
 
 type ReviewFieldSummaryLabel =
+  | "Attachment"
   | "Dropdown"
   | "Number"
   | "Radio group"

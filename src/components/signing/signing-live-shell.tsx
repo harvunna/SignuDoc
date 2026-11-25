@@ -157,6 +157,8 @@ function getCanvasFieldLabel(
       return "Choose";
     case "radio":
       return "Option";
+    case "attachment":
+      return "Attach";
     default:
       return "Field";
   }
@@ -198,6 +200,8 @@ function getFieldLabel(
       return "Choose one";
     case "radio":
       return "Option";
+    case "attachment":
+      return "Attach a file";
     default:
       return "Field";
   }
@@ -208,9 +212,18 @@ type EnteredValues = {
   /** Checkboxes and radio buttons. */
   checkboxValues: Record<string, boolean>;
   signatureValues: Record<string, SignatureEntry>;
-  /** Text, number and dropdown fields. */
+  /**
+   * Text, number and dropdown fields, and (Signly) the name of the file
+   * attached in an attachment field.
+   */
   textValues: Record<string, string>;
+  /** Signly: the upload each attachment field uses. */
+  attachmentUploadIds?: Record<string, string>;
 };
+
+/** Signly: the largest file a signer can attach, as the server allows. */
+const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024;
+const ATTACHMENT_ACCEPT = "application/pdf,image/png,image/jpeg";
 
 /** The radio buttons that are answered together with this one. */
 function getRadioGroup(
@@ -271,6 +284,8 @@ function getSummaryLabel(field: SigningCurrentField) {
       return "Dropdown";
     case "radio":
       return "Choice";
+    case "attachment":
+      return "Attachment";
     default:
       return "Field";
   }
@@ -284,7 +299,8 @@ function isActionSummaryField(field: SigningCurrentField) {
   if (
     field.type === "text" ||
     field.type === "number" ||
-    field.type === "dropdown"
+    field.type === "dropdown" ||
+    field.type === "attachment"
   ) {
     return true;
   }
@@ -329,6 +345,10 @@ function getCompletionValue(
     return textValues[field.id]?.trim() || "Choose one";
   }
 
+  if (field.type === "attachment") {
+    return textValues[field.id]?.trim() || "Attach a file";
+  }
+
   if (field.type === "checkbox") {
     return checkboxValues[field.id] ? "Checked" : "Optional";
   }
@@ -360,7 +380,8 @@ function isFieldComplete(
   if (
     field.type === "text" ||
     field.type === "number" ||
-    field.type === "dropdown"
+    field.type === "dropdown" ||
+    field.type === "attachment"
   ) {
     if (!field.required) {
       return true;
@@ -396,16 +417,36 @@ function getVisibleFieldValue(field: SigningVisibleField) {
     return field.checked ? "Checked" : "Unchecked";
   }
 
+  // Signly: another signer's file is the sender's to see, not its name.
+  if (field.type === "attachment") {
+    return "File attached";
+  }
+
   return field.value?.trim() || getFieldLabel(field);
 }
 
 function buildSigningSubmissionPayload(
   record: SigningPayload,
-  { checkboxValues, signatureValues, textValues }: EnteredValues,
+  {
+    attachmentUploadIds = {},
+    checkboxValues,
+    signatureValues,
+    textValues,
+  }: EnteredValues,
 ): SigningSubmission {
   const fields: SigningSubmission["fields"] = [];
 
   for (const field of record.currentSignerFields) {
+    if (field.type === "attachment") {
+      const uploadId = attachmentUploadIds[field.id];
+
+      if (uploadId) {
+        fields.push({ fieldId: field.id, type: "attachment", uploadId });
+      }
+
+      continue;
+    }
+
     if (field.type === "signature" || field.type === "initials") {
       const entry = signatureValues[field.id];
 
@@ -547,6 +588,13 @@ export function SigningLiveShell({
     useState<SignatureModalState | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [textValues, setTextValues] = useState<Record<string, string>>({});
+  // Signly: the upload each attachment field uses, and the ones on their way.
+  const [attachmentUploadIds, setAttachmentUploadIds] = useState<
+    Record<string, string>
+  >({});
+  const [uploadingAttachments, setUploadingAttachments] = useState<
+    Record<string, boolean>
+  >({});
   // Text answers too long for their box on the finished document, with how
   // many characters would fit. Checked on the server as the signer types,
   // with the fonts the document is drawn with.
@@ -577,10 +625,75 @@ export function SigningLiveShell({
     (field) => field.page === activePage,
   );
   const enteredValues: EnteredValues = {
+    attachmentUploadIds,
     checkboxValues,
     signatureValues,
     textValues,
   };
+
+  // Signly: sends a file for an attachment field as soon as it is chosen,
+  // so finishing only names it. Choosing another file replaces it.
+  async function handleAttachmentSelect(
+    field: SigningCurrentField,
+    file: File,
+  ) {
+    setSubmitError(null);
+
+    if (!record.attachmentUploadUrl) {
+      return;
+    }
+
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      setSubmitError(
+        `That file is too large. Attach a file of up to ${String(MAX_ATTACHMENT_BYTES / (1024 * 1024))} MB.`,
+      );
+      return;
+    }
+
+    setUploadingAttachments((current) => ({ ...current, [field.id]: true }));
+
+    try {
+      const response = await fetch(
+        `${record.attachmentUploadUrl}?${new URLSearchParams({ fieldId: field.id }).toString()}`,
+        {
+          body: file,
+          headers: {
+            "content-type": file.type || "application/octet-stream",
+            "x-file-name": encodeURIComponent(file.name),
+          },
+          method: "POST",
+        },
+      );
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+        fileName?: string;
+        id?: string;
+      } | null;
+
+      if (!response.ok || !payload?.id) {
+        setSubmitError(payload?.error ?? "Unable to attach this file.");
+        return;
+      }
+
+      const uploadId = payload.id;
+
+      setAttachmentUploadIds((current) => ({
+        ...current,
+        [field.id]: uploadId,
+      }));
+      setTextValues((current) => ({
+        ...current,
+        [field.id]: payload.fileName ?? file.name,
+      }));
+    } catch {
+      setSubmitError("Unable to attach this file. Check your connection.");
+    } finally {
+      setUploadingAttachments((current) => ({
+        ...current,
+        [field.id]: false,
+      }));
+    }
+  }
   // Nothing the signer enters is saved until Finish, so leaving or
   // reloading the page first would lose it. The browser asks before that
   // happens (issue #99). Finishing or declining leaves on purpose.
@@ -1240,6 +1353,12 @@ export function SigningLiveShell({
                                   [field.id]: value,
                                 }));
                               }}
+                              onAttachmentSelect={(file) => {
+                                void handleAttachmentSelect(field, file);
+                              }}
+                              isUploading={Boolean(
+                                uploadingAttachments[field.id],
+                              )}
                               signatureEntry={signatureValues[field.id]}
                               textValue={textValues[field.id] ?? ""}
                             />
@@ -1729,7 +1848,9 @@ function CurrentSignerField({
   checkboxValue,
   field,
   isInvalid,
+  isUploading = false,
   localDateLabel,
+  onAttachmentSelect,
   onCheckboxChange,
   onSignatureClick,
   onTextChange,
@@ -1742,7 +1863,11 @@ function CurrentSignerField({
   field: SigningCurrentField;
   /** True for a number field holding something that is not a number. */
   isInvalid: boolean;
+  /** Signly: an attachment field's file is on its way. */
+  isUploading?: boolean;
   localDateLabel: string;
+  /** Signly: the signer chose a file for an attachment field. */
+  onAttachmentSelect?: (file: File) => void;
   onCheckboxChange: (checked: boolean) => void;
   onSignatureClick: () => void;
   onTextChange: (value: string) => void;
@@ -1907,6 +2032,52 @@ function CurrentSignerField({
           ))}
         </select>
       </div>
+    );
+  }
+
+  // Signly: the signer chooses a file; its name shows once it is attached.
+  if (field.type === "attachment") {
+    return (
+      <label
+        className={`absolute z-2 flex cursor-pointer items-center overflow-hidden rounded-[0.375rem] border-2 border-dashed border-(--accent) px-2 text-sm transition focus-within:bg-white ${
+          textValue
+            ? "bg-[rgb(var(--accent-rgb)/0.10)] text-(--fg)"
+            : "bg-[rgb(var(--accent-rgb)/0.07)] text-(--accent-ink) hover:bg-[rgb(var(--accent-rgb)/0.16)]"
+        }`}
+        data-signing-field="true"
+        htmlFor={`signing-field-${field.id}`}
+        style={frame}
+        title={textValue || getFieldLabel(field)}
+      >
+        <input
+          accept={ATTACHMENT_ACCEPT}
+          aria-label={getFieldLabel(field)}
+          className="sr-only"
+          disabled={isUploading}
+          id={`signing-field-${field.id}`}
+          name={`signing-field-${field.id}`}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+
+            // Cleared so the same file can be chosen again after an error.
+            event.target.value = "";
+
+            if (file) {
+              onAttachmentSelect?.(file);
+            }
+          }}
+          type="file"
+        />
+        {showInlineValue || showInlineLabel ? (
+          <span className="block max-w-full truncate text-[12px] font-semibold">
+            {isUploading
+              ? "Attaching..."
+              : textValue
+                ? textValue
+                : getFieldLabel(field)}
+          </span>
+        ) : null}
+      </label>
     );
   }
 

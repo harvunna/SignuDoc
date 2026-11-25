@@ -62,6 +62,7 @@ export const fieldTypes = [
   "number",
   "dropdown",
   "radio",
+  "attachment",
 ] as const;
 
 export const fieldInputMethods = ["typed", "drawn", "auto"] as const;

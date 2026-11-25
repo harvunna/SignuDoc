@@ -176,3 +176,24 @@ export function getRecipientCertificateKey(evidenceKey: string): string {
     `Cannot derive recipient certificate key from "${normalizedKey}".`,
   );
 }
+
+/**
+ * Signly: a file a signer uploaded for an attachment field, under a key of
+ * its own for each upload, so a replaced upload can be deleted without
+ * touching the one that replaced it. It sits beside the original, for the
+ * same reason as the thumbnail.
+ */
+export function buildSignerAttachmentKey(
+  input: EnvelopeStorageIdentity & {
+    extension: "jpg" | "pdf" | "png";
+    fieldId: string;
+    sourcePdfKey: string;
+    uploadId: string;
+  },
+): string {
+  return path.posix.join(
+    path.posix.dirname(buildEnvelopeThumbnailKey(input)),
+    "attachments",
+    `${input.fieldId}-${input.uploadId}.${input.extension}`,
+  );
+}

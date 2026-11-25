@@ -81,6 +81,8 @@ export const apiSendOptionsSchema = z.object({
 const apiSignerSchema = z.object({
   accessCode: z.string().trim().min(4).max(64).optional(),
   email: emailSchema,
+  // Signly: signs on the sender's device; no invitation is emailed.
+  inPerson: z.boolean().optional(),
   name: nameSchema,
   ref: refSchema,
   requireEmailCode: z.boolean().optional(),
@@ -240,6 +242,7 @@ export async function createEnvelopeForApi(
         signers: input.signers.map((signer, index) => ({
           accessCode: signer.accessCode,
           email: signer.email,
+          inPerson: signer.inPerson,
           name: signer.name,
           requireEmailCode: signer.requireEmailCode,
           signatureMeaning: signer.signatureMeaning,

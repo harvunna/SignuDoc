@@ -126,6 +126,13 @@ import {
   type SignerCheckState,
 } from "./signer-checks.ts";
 import {
+  assertSignerAttachmentUploadsKept,
+  deleteDiscardedSignerAttachments,
+  discardSignerAttachmentUploads,
+  listSignerAttachmentUploads,
+  type SignerAttachmentUpload,
+} from "./signer-attachments.ts";
+import {
   isEarlierStep,
   routeAfterSignatures,
   signingStepOf,
@@ -193,6 +200,10 @@ type SigningSignerRow = {
   userId: string | null;
   turnStartedAt: number | null;
   updatedAt: number;
+  // Signly: signs on the sender's device (see in-person-signing.ts).
+  inPerson: boolean;
+  inPersonHostEmail: string | null;
+  inPersonHostedAt: number | null;
 };
 
 type SigningFieldRow = {
@@ -639,6 +650,9 @@ async function listSignerRows(
         decline_reason AS "declineReason",
         signature_meaning AS "signatureMeaning",
         user_id AS "userId",
+        in_person AS "inPerson",
+        in_person_host_email AS "inPersonHostEmail",
+        in_person_hosted_at AS "inPersonHostedAt",
         created_at AS "createdAt",
         updated_at AS "updatedAt"
       FROM signers
@@ -1003,6 +1017,7 @@ function isFieldSubmissionComplete(
     case "text":
     case "number":
     case "dropdown":
+    case "attachment":
       return typeof update.value === "string" && update.value.trim().length > 0;
     case "checkbox":
       return update.checked === true;
@@ -1064,6 +1079,10 @@ function buildSignedAuditEvent(input: {
   signer: ReturnType<typeof signerRecordSchema.parse>;
   submittedAt: number;
   timezoneOffsetMinutes: number;
+  /** Signly: the files the signer attached, as stored. */
+  attachments?: readonly SignedAttachmentEvidence[];
+  /** Signly: signed on the sender's device, in an in-person session. */
+  inPerson?: { hostEmail: string | null; hostedAt: number | null } | null;
 }): AuditEventRecord {
   // An approver's decision is its own event, never "signed": the audit
   // trail and the certificate must not show an approval as a signature.
@@ -1092,10 +1111,23 @@ function buildSignedAuditEvent(input: {
       ...(input.providerSignature
         ? { providerSignature: input.providerSignature }
         : {}),
+      ...(input.attachments && input.attachments.length > 0
+        ? { attachments: input.attachments.map((entry) => ({ ...entry })) }
+        : {}),
+      ...(input.inPerson ? { inPerson: { ...input.inPerson } } : {}),
     },
     userAgent: input.requestMeta.userAgent ?? null,
   };
 }
+
+/** Signly: what the signed audit event records of each attached file. */
+type SignedAttachmentEvidence = {
+  contentType: string;
+  fieldId: string;
+  fileName: string;
+  sha256: string;
+  sizeBytes: number;
+};
 
 function buildDeclinedAuditEvent(input: {
   /** The checks the person passed before declining or rejecting. */
@@ -1810,6 +1842,62 @@ export async function checkSigningFieldFit(
 }
 
 /**
+ * Signly: the attachment field a signer is uploading a file for, after the
+ * same checks as signing itself: a live link whose turn it is, the extra
+ * checks passed, and agreement to use electronic records. See
+ * signer-attachments.ts.
+ */
+export async function resolveSignerAttachmentTarget(
+  token: string,
+  fieldId: string,
+  {
+    database = getDb(),
+    verifiedMethods = [],
+  }: Pick<SubmitSigningOptions, "database" | "verifiedMethods"> = {},
+): Promise<{
+  envelopeId: string;
+  envelopeUserId: string;
+  fieldId: string;
+  signerId: string;
+  sourcePdfKey: string;
+  tokenHash: string;
+}> {
+  const context = await resolveSigningContext(token, { database });
+  const { state } = await assertSignerChecksPassed(
+    context,
+    verifiedMethods,
+    database,
+  );
+
+  if (state.consentedAt === null) {
+    throw new SigningMutationError(
+      "Agree to use electronic records and signatures before signing.",
+      409,
+    );
+  }
+
+  const field = context.fields.find(
+    (entry) =>
+      entry.id === fieldId &&
+      entry.signerId === context.signer.id &&
+      entry.type === "attachment",
+  );
+
+  if (!field?.id || !context.signer.id) {
+    throw new SigningMutationError("That field is not yours to fill in.", 404);
+  }
+
+  return {
+    envelopeId: context.envelope.id,
+    envelopeUserId: context.envelope.userId,
+    fieldId: field.id,
+    signerId: context.signer.id,
+    sourcePdfKey: context.envelope.sourcePdfKey,
+    tokenHash: hashOpaqueToken(token),
+  };
+}
+
+/**
  * The disclosure this signer reads, filled in for their sender. It is read
  * from the database, not the settings cache, so the signing page and the
  * consent check always agree on the words just after an administrator
@@ -2143,9 +2231,12 @@ export async function getSigningPayloadForToken(
         checked: field.checked ?? null,
         height: field.height,
         id: field.id,
-        imageDataUrl: field.imageKey
-          ? await buildImageDataUrl(field.imageKey, storageService)
-          : null,
+        // Signly: an attachment's stored file is the signer's upload, not a
+        // picture to show; only its name is shown.
+        imageDataUrl:
+          field.imageKey && field.type !== "attachment"
+            ? await buildImageDataUrl(field.imageKey, storageService)
+            : null,
         inputMethod: field.inputMethod ?? null,
         label: field.label,
         page: field.page,
@@ -2154,7 +2245,9 @@ export async function getSigningPayloadForToken(
         signerName: signerNamesById.get(field.signerId) ?? "Signed field",
         submittedAt: field.submittedAt!,
         type: field.type,
-        value: field.value ?? null,
+        // Signly: an earlier signer's attached file is for the sender; its
+        // name is not shown to the next signers.
+        value: field.type === "attachment" ? null : (field.value ?? null),
         width: field.width,
         x: field.x,
         y: field.y,
@@ -2164,6 +2257,11 @@ export async function getSigningPayloadForToken(
   return signingPayloadSchema.parse({
     consentUrl: getSigningConsentUrl(token),
     fieldFitUrl: getSigningFieldFitUrl(token),
+    ...(currentSignerFields.some((field) => field.type === "attachment")
+      ? {
+          attachmentUploadUrl: `/api/signing/${encodeURIComponent(token)}/attachments`,
+        }
+      : {}),
     consentedAt: checkState.consentedAt,
     currentSignerFields,
     disclosure: {
@@ -2400,6 +2498,35 @@ async function assertStillSignersTurn(
 type SigningContext = Awaited<ReturnType<typeof resolveSigningContext>>;
 
 /**
+ * Signly: once a signer has signed, the files they uploaded and did not
+ * use go. The signature is saved by then, so a failure here only leaves
+ * the files queued for the daily cleanup.
+ */
+async function discardUnusedAttachments(
+  envelopeId: string,
+  signerId: string,
+  keepUploadIds: readonly string[],
+  database: DbPool,
+  storageService: StorageService,
+) {
+  try {
+    const keys = await discardSignerAttachmentUploads(
+      envelopeId,
+      signerId,
+      keepUploadIds,
+      database,
+    );
+
+    await deleteDiscardedSignerAttachments(keys, database, storageService);
+  } catch (error) {
+    console.error(
+      `Failed to remove unused attachments of signer ${signerId} on envelope ${envelopeId}:`,
+      error,
+    );
+  }
+}
+
+/**
  * Refuses an answer too long to be read in its box on the finished document,
  * before anything is saved, so the signer can shorten it. Without this the
  * value would be drawn so small that no one could read it. A dropdown choice
@@ -2435,6 +2562,8 @@ function buildSignerSubmission(
   context: SigningContext,
   parsedInput: SigningSubmission,
   submittedAt: number,
+  // Signly: the files this signer has uploaded, by upload id.
+  attachmentUploads: ReadonlyMap<string, SignerAttachmentUpload> = new Map(),
 ) {
   const currentSignerId = context.signer.id;
 
@@ -2471,6 +2600,7 @@ function buildSignerSubmission(
         imageKey: string;
       }>,
       fieldUpdates: new Map<string, FieldPersistenceUpdate>(),
+      usedAttachments: [] as SignerAttachmentUpload[],
     };
   }
 
@@ -2514,9 +2644,41 @@ function buildSignerSubmission(
     imageKey: string;
   }> = [];
   const fieldUpdates = new Map<string, FieldPersistenceUpdate>();
+  const usedAttachments: SignerAttachmentUpload[] = [];
 
   for (const field of currentSignerFields) {
     const submission = relevantSubmissions.get(field.id);
+
+    // Signly: the file the signer uploaded for this field. The field names
+    // the stored file and keeps its name as the value; the file itself is
+    // never put on the document.
+    if (field.type === "attachment") {
+      const upload =
+        submission?.type === "attachment"
+          ? attachmentUploads.get(submission.uploadId)
+          : undefined;
+
+      if (submission?.type === "attachment" && upload?.fieldId !== field.id) {
+        throw new SigningMutationError(
+          "An attached file could not be found. Attach it again.",
+          400,
+        );
+      }
+
+      if (upload) {
+        usedAttachments.push(upload);
+      }
+
+      fieldUpdates.set(field.id, {
+        checked: null,
+        fieldId: field.id,
+        imageKey: upload?.storageKey ?? null,
+        inputMethod: null,
+        submittedAt: upload ? submittedAt : null,
+        value: upload?.fileName ?? null,
+      });
+      continue;
+    }
 
     if (field.type === "signature" || field.type === "initials") {
       if (!submission) {
@@ -2658,6 +2820,7 @@ function buildSignerSubmission(
     currentSignerId,
     drawnSignatureUploads,
     fieldUpdates,
+    usedAttachments,
   };
 }
 
@@ -2834,7 +2997,20 @@ async function submitSigningOnce(
     currentSignerId,
     drawnSignatureUploads,
     fieldUpdates,
-  } = buildSignerSubmission(context, parsedInput, submittedAt);
+    usedAttachments,
+  } = buildSignerSubmission(
+    context,
+    parsedInput,
+    submittedAt,
+    context.signer.id && !approval
+      ? await listSignerAttachmentUploads(
+          context.envelope.id,
+          context.signer.id,
+          database,
+        )
+      : new Map(),
+  );
+  const usedAttachmentIds = usedAttachments.map((upload) => upload.id);
 
   await assertTypedValuesFitTheirFields(context, fieldUpdates);
   const presentedTokenHash = hashOpaqueToken(token);
@@ -2898,6 +3074,19 @@ async function submitSigningOnce(
       signer: context.signer,
       submittedAt,
       timezoneOffsetMinutes: parsedInput.clientTimezoneOffsetMinutes,
+      attachments: usedAttachments.map((upload) => ({
+        contentType: upload.contentType,
+        fieldId: upload.fieldId,
+        fileName: upload.fileName,
+        sha256: upload.sha256,
+        sizeBytes: upload.sizeBytes,
+      })),
+      inPerson: context.signer.inPerson
+        ? {
+            hostEmail: context.signer.inPersonHostEmail ?? null,
+            hostedAt: context.signer.inPersonHostedAt ?? null,
+          }
+        : null,
     });
 
     if (!isLastSignature) {
@@ -2944,6 +3133,12 @@ async function submitSigningOnce(
           signerId: currentSignerId,
           tokenHash: presentedTokenHash,
         });
+        // Signly: the attached files are still the ones read above.
+        await assertSignerAttachmentUploadsKept(
+          tx,
+          currentSignerId,
+          usedAttachmentIds,
+        );
 
         for (const update of fieldUpdates.values()) {
           const result = await tx.query(
@@ -3098,12 +3293,30 @@ async function submitSigningOnce(
         );
       }, database);
       signingStatePersisted = true;
+      await discardUnusedAttachments(
+        context.envelope.id,
+        currentSignerId,
+        usedAttachmentIds,
+        database,
+        storageService,
+      );
       await deleteReplacedRevision(replacedRevisionKey, storageService);
 
       // Nobody to invite while others in this step are still signing. In
       // an embedded envelope nobody is emailed: the app starts the next
       // step's turns, and the signer.signed webhook shows who is next.
-      const invitations = embedded ? [] : nextSignerDeliveries;
+      // Signly: nor is a signer who signs in person; the sender opens
+      // their session from the envelope's page.
+      const inPersonSignerIds = new Set(
+        context.signers
+          .filter((signer) => signer.inPerson && signer.id)
+          .map((signer) => signer.id),
+      );
+      const invitations = embedded
+        ? []
+        : nextSignerDeliveries.filter(
+            (delivery) => !inPersonSignerIds.has(delivery.id),
+          );
 
       for (const nextSignerDelivery of invitations) {
         try {
@@ -3202,6 +3415,12 @@ async function submitSigningOnce(
           signerId: currentSignerId,
           tokenHash: presentedTokenHash,
         });
+        // Signly: the attached files are still the ones read above.
+        await assertSignerAttachmentUploadsKept(
+          tx,
+          currentSignerId,
+          usedAttachmentIds,
+        );
 
         // The final files are made from the signers, fields and audit trail
         // read before the lock, which hold everyone else's signature: a
@@ -3399,6 +3618,13 @@ async function submitSigningOnce(
         return artifacts;
       }, database);
       signingStatePersisted = true;
+      await discardUnusedAttachments(
+        context.envelope.id,
+        currentSignerId,
+        usedAttachmentIds,
+        database,
+        storageService,
+      );
       await deleteReplacedRevision(replacedRevisionKey, storageService);
     } catch (error) {
       if (finalArtifactsStored) {
@@ -3507,7 +3733,18 @@ export async function prepareSignerSubmission(
   }
 
   const { currentSignerId, drawnSignatureUploads, fieldUpdates } =
-    buildSignerSubmission(context, parsedInput, submittedAt);
+    buildSignerSubmission(
+      context,
+      parsedInput,
+      submittedAt,
+      context.signer.id
+        ? await listSignerAttachmentUploads(
+            context.envelope.id,
+            context.signer.id,
+            database,
+          )
+        : new Map(),
+    );
 
   await assertTypedValuesFitTheirFields(context, fieldUpdates);
 

@@ -5,6 +5,7 @@ import {
   CaseSensitiveIcon,
   CircleDotIcon,
   HashIcon,
+  PaperclipIcon,
   SignatureIcon,
   SquareCheckIcon,
   SquareChevronDownIcon,
@@ -228,6 +229,17 @@ const fieldTools: readonly FieldTool[] = [
     placeholderLabel: "Radio button",
     type: "radio",
   },
+  // Signly: a place where the signer uploads a file (a PDF or a picture)
+  // while signing, such as a copy of an ID or a certificate.
+  {
+    defaultHeight: 0.045,
+    defaultWidth: 0.22,
+    label: "Attachment",
+    minHeight: 0.0045,
+    minWidth: 0.006,
+    placeholderLabel: "Attach a file",
+    type: "attachment",
+  },
 ] as const;
 
 // Fields the sender may leave optional. A signature, initials, the date and
@@ -238,7 +250,8 @@ function canBeOptional(type: PrepareFieldType) {
     type === "checkbox" ||
     type === "number" ||
     type === "dropdown" ||
-    type === "radio"
+    type === "radio" ||
+    type === "attachment"
   );
 }
 
@@ -1345,6 +1358,7 @@ const fieldToolIcons: Record<PrepareFieldType, LucideIcon> = {
   dropdown: SquareChevronDownIcon,
   initials: CaseSensitiveIcon,
   name: UserRoundIcon,
+  attachment: PaperclipIcon,
   number: HashIcon,
   radio: CircleDotIcon,
   signature: SignatureIcon,
