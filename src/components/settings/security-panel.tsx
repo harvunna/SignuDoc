@@ -196,6 +196,7 @@ function describeEvent(event: SystemAuditEvent): string {
 
 const downloadedFileLabels: Record<string, string> = {
   audit_trail: "audit trail",
+  envelope_report: "envelope report",
   evidence: "certificate",
   original: "document as sent",
   signed: "signed PDF",
