@@ -545,6 +545,20 @@ export function buildOpenApiDocument(
           scheme: "bearer",
           type: "http",
         },
+        oauth2: {
+          description:
+            "OAuth 2.0 client credentials. Register a client in Settings, My OAuth clients, trade its id and secret at the token URL for an access token that lasts an hour, and send it as a Bearer token. It acts as the person who made the client.",
+          flows: {
+            clientCredentials: {
+              scopes: {
+                read: "Look at envelopes and templates.",
+                write: "Also create, send and void envelopes. Includes read.",
+              },
+              tokenUrl: new URL("../oauth/token", `${serverUrl}/`).toString(),
+            },
+          },
+          type: "oauth2",
+        },
       },
     },
     info: {
@@ -1107,7 +1121,7 @@ export function buildOpenApiDocument(
         },
       },
     },
-    security: [{ apiKey: [] }],
+    security: [{ apiKey: [] }, { oauth2: ["read", "write"] }],
     servers: [{ url: serverUrl }],
   };
 }
