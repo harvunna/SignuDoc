@@ -20,7 +20,7 @@ export default async function SettingsPage() {
   const session = await getAuthSession();
   const isAdmin = session ? await isAdminUser(session.user.id) : false;
   const settings = await getSettings();
-  // Signly plans: shown only on a site that has one, so a site without
+  // GCM eSign plans: shown only on a site that has one, so a site without
   // plan settings (GCM's own) looks as it always has.
   const planUsage =
     isAdmin && hasPlan(readPlanConfig()) ? await readPlanUsage() : null;
@@ -41,7 +41,7 @@ export default async function SettingsPage() {
           required: settings.requireTwoFactor,
         }}
       />
-      {/* Signly change: anyone with an account can have API keys. An
+      {/* GCM eSign change: anyone with an account can have API keys. An
           administrator manages every key from Organization settings. */}
       {session && !isAdmin && !settings.hosted ? (
         <ApiKeysPanel view="own" />

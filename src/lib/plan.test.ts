@@ -10,7 +10,7 @@ import {
   usageMonth,
 } from "./plan.ts";
 
-// Signly plans: reading the plan from the environment. See plan.ts.
+// GCM eSign plans: reading the plan from the environment. See plan.ts.
 
 test("a site without plan settings has no limits and is active", () => {
   const plan = readPlanConfig({});
@@ -117,4 +117,17 @@ test("the usage report needs SIGNLY_CONTROL_SECRET, and is shut without it", () 
   );
   assert.equal(isControlPanelRequest("Bearer anything", {}), false);
   assert.equal(isControlPanelRequest("Bearer ", {}), false);
+});
+
+test("the GCMESIGN_ names work, and win over the old SIGNLY_ ones", () => {
+  const config = readPlanConfig({
+    GCMESIGN_MAX_USERS: "5",
+    GCMESIGN_SITE_STATUS: "paused",
+    SIGNLY_MAX_USERS: "10",
+    SIGNLY_PLAN_NAME: "Starter",
+  });
+
+  assert.equal(config.maxUsers, 5);
+  assert.equal(config.status, "paused");
+  assert.equal(config.name, "Starter");
 });

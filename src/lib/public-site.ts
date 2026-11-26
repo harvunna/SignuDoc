@@ -1,15 +1,15 @@
-// Signly: the public marketing site, only on the install that turns it on.
+// GCM eSign: the public marketing site, only on the install that turns it on.
 //
 // Customer sites should not show up in search engines, and a sign-in page
 // has nothing for a search engine to read. The one site that sells the
-// product (GCM's own) sets SIGNLY_PUBLIC_SITE=true: it gets a home page,
+// product (GCM's own) sets GCMESIGN_PUBLIC_SITE=true: it gets a home page,
 // a few pages for the searches people make, a sitemap and a robots file.
 // Everywhere else the robots file tells search engines to stay away.
 
-import { readEnv, resolveAppUrl, type EnvSource } from "./utils/env.ts";
+import { readSiteEnv, resolveAppUrl, type EnvSource } from "./utils/env.ts";
 
 export function isPublicSite(env: EnvSource = process.env): boolean {
-  const value = readEnv(env, "SIGNLY_PUBLIC_SITE")?.toLowerCase();
+  const value = readSiteEnv(env, "PUBLIC_SITE")?.toLowerCase();
 
   return value === "1" || value === "true";
 }

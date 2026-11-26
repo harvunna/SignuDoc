@@ -114,7 +114,7 @@ type SourcePdf = {
 
 type DraftRequest = {
   cleanUp: () => Promise<void>;
-  /** Signly: one or more PDFs, in the order the sender put them. */
+  /** GCM eSign: one or more PDFs, in the order the sender put them. */
   readSourcePdfs: () => Promise<SourcePdf[]>;
   title: string;
 };
@@ -148,7 +148,7 @@ async function readFormRequest(
   }
 
   const parsedTitle = envelopeTitleSchema.safeParse(formData.get("title"));
-  // Signly: every "file" part is a document, in the order sent.
+  // GCM eSign: every "file" part is a document, in the order sent.
   const uploadedFiles = formData.getAll("file");
 
   if (!parsedTitle.success) {
@@ -185,7 +185,7 @@ const directUploadSchema = z.object({
   uploadKey: z.string().min(1).max(512),
 });
 
-// One upload as before, or (Signly) several under "documents", in order.
+// One upload as before, or (GCM eSign) several under "documents", in order.
 const directUploadRequestSchema = z.object({
   documents: z
     .array(directUploadSchema)

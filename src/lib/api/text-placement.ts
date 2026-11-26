@@ -15,7 +15,7 @@ import {
   type ScannedPage,
 } from "./text-tags.ts";
 
-// Signly: turns text tags and anchors into ordinary fields before the
+// GCM eSign: turns text tags and anchors into ordinary fields before the
 // envelope is made, so nothing after this knows they existed.
 
 export type RequestedField = {

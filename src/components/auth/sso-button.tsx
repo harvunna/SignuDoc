@@ -17,7 +17,7 @@ export function describeSsoError(code: string): string {
     case "signup_closed":
     case "signup_domain_not_allowed":
       return "That address does not have an account here, and this site's sign-up rule does not let it make one. Ask an administrator.";
-    // Signly plans: SIGNLY_MAX_USERS (src/lib/plan.ts).
+    // GCM eSign plans: GCMESIGN_MAX_USERS (src/lib/plan.ts).
     case "signup_user_limit":
       return "That address does not have an account here, and this site already has as many accounts as its plan allows. Ask an administrator.";
     case "access_denied":

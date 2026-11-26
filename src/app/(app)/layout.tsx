@@ -44,7 +44,7 @@ export default async function AuthenticatedAppLayout({
   return (
     <BrandingProvider branding={buildBranding(settings)}>
       <AppShell
-        // Signly plans: everyone is told the site is paused; only an
+        // GCM eSign plans: everyone is told the site is paused; only an
         // administrator gets the billing link.
         pausedNotice={
           plan.status === "paused"

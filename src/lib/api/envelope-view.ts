@@ -28,7 +28,7 @@ export type ApiSigner = {
   declineReason: string | null;
   email: string;
   id: string;
-  /** Signly: signs on the sender's device; never emailed a link. */
+  /** GCM eSign: signs on the sender's device; never emailed a link. */
   inPerson: boolean;
   name: string;
   order: number;
@@ -45,7 +45,7 @@ export type ApiSigner = {
   viewedAt: string | null;
 };
 
-/** Signly: a file a signer attached while signing. */
+/** GCM eSign: a file a signer attached while signing. */
 export type ApiAttachment = {
   contentType: string;
   fieldId: string;
@@ -68,7 +68,7 @@ export type ApiDocument = {
 };
 
 export type ApiEnvelope = {
-  /** Signly: files signers attached, once they signed. */
+  /** GCM eSign: files signers attached, once they signed. */
   attachments: ApiAttachment[];
   completedAt: string | null;
   copyRecipients: Array<{ email: string; id: string; name: string }>;
@@ -77,7 +77,7 @@ export type ApiEnvelope = {
   /** "email", or "embedded" when signers sign inside the calling app. */
   delivery: "email" | "embedded";
   /**
-   * Signly: the documents the envelope is made of, in order, and which
+   * GCM eSign: the documents the envelope is made of, in order, and which
    * pages of its one PDF each became. One entry for an envelope of one
    * file.
    */
@@ -228,7 +228,7 @@ type AttachmentRow = {
   submittedAt: number | null;
 };
 
-/** Signly: the files signers attached, by envelope. */
+/** GCM eSign: the files signers attached, by envelope. */
 async function readAttachments(
   envelopeIds: string[],
   database: DbExecutor,

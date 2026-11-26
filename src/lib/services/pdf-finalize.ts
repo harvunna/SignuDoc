@@ -782,7 +782,7 @@ async function drawFieldValue(
     case "number":
     case "dropdown":
     case "attachment": {
-      // Signly: an attachment is not put on the document; its box says
+      // GCM eSign: an attachment is not put on the document; its box says
       // which file was attached, and the certificate lists it in full.
       const textValue =
         field.type === "attachment" && field.value?.trim()
@@ -1037,7 +1037,7 @@ function buildAuditLines(input: {
     input.fonts.regular,
     bodyFontSize,
   );
-  // Signly: an envelope of several documents lists each one, with the
+  // GCM eSign: an envelope of several documents lists each one, with the
   // pages of the signed PDF it became and the hash of the file as uploaded,
   // so each original can be matched to its part of the signed document.
   const documents = listEnvelopeDocuments(input.envelope);
@@ -1420,7 +1420,7 @@ function describeSignerEvidence(
     typeof embeddedSource.metadata.embedded === "object"
       ? (embeddedSource.metadata.embedded as Record<string, unknown>)
       : null;
-  // Signly: signed on the sender's device, in a session the sender opened.
+  // GCM eSign: signed on the sender's device, in a session the sender opened.
   const inPerson =
     signed?.metadata?.inPerson && typeof signed.metadata.inPerson === "object"
       ? (signed.metadata.inPerson as Record<string, unknown>)
@@ -1489,7 +1489,7 @@ function describeSignerEvidence(
   return details;
 }
 
-/** Signly: who hosted an in-person signing session, and when. */
+/** GCM eSign: who hosted an in-person signing session, and when. */
 function describeInPersonSession(
   inPerson: Record<string, unknown>,
   redacted: boolean,
@@ -1513,7 +1513,7 @@ function formatAttachmentSize(sizeBytes: number): string {
 }
 
 /**
- * Signly: the files a signer attached, as the signed audit event recorded
+ * GCM eSign: the files a signer attached, as the signed audit event recorded
  * them. The SHA-256 lets anyone check a downloaded file is the one signed
  * with.
  */

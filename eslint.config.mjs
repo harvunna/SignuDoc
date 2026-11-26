@@ -22,7 +22,7 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "public/pdfjs/**",
-    // Signly: vendored Swagger UI bundle (see CUSTOMIZATIONS.md).
+    // GCM eSign: vendored Swagger UI bundle (see CUSTOMIZATIONS.md).
     "public/swagger-ui/**",
   ]),
 ]);

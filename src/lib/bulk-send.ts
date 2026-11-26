@@ -785,7 +785,7 @@ export async function bulkSendFromTemplate(
     throw new BulkSendError("Unable to send this envelope.", 500);
   }
 
-  // Signly plans: a paused site, or a month with no envelopes left, sends
+  // GCM eSign plans: a paused site, or a month with no envelopes left, sends
   // none of the list, so it is said once instead of on every row. Each
   // send still checks for itself (sendDraftEnvelope), for a limit reached
   // part-way through.

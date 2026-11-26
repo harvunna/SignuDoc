@@ -21,7 +21,7 @@ import {
   type StorageService,
 } from "./services/storage.ts";
 
-// Signly: files a signer uploads while signing, for the "attachment" fields
+// GCM eSign: files a signer uploads while signing, for the "attachment" fields
 // the sender placed for them (a copy of an ID, a certificate, a form).
 //
 // The file is uploaded on its own, before the signer finishes, because a

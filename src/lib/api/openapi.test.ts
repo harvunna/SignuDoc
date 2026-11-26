@@ -36,7 +36,7 @@ async function listRouteFiles(dir: string, prefix = ""): Promise<string[]> {
 test("the OpenAPI description matches the route files", async () => {
   const { readFile } = await import("node:fs/promises");
   const document = buildOpenApiDocument("https://sign.example.com/api/v1");
-  // Signly change: /api/v1 itself serves the Swagger page, not an
+  // GCM eSign change: /api/v1 itself serves the Swagger page, not an
   // endpoint of the API, so it is not in the description.
   const routes = (await listRouteFiles(V1_DIR)).filter((route) => route !== "");
 

@@ -14,7 +14,7 @@ export const ctaClass =
 export const ghostClass =
   "inline-flex h-11 items-center justify-center rounded-full border border-(--border) px-6 text-sm font-bold text-(--fg) transition hover:bg-(--secondary)";
 
-// Signly: the frame around every public page: a header, the page, a footer.
+// GCM eSign: the frame around every public page: a header, the page, a footer.
 export function MarketingShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col bg-(--bg) text-(--fg)">

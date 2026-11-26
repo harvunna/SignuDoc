@@ -34,7 +34,7 @@ import {
   submitSigningForToken,
 } from "./signing.ts";
 
-// Signly: signer attachments, in-person signing, and how a correction
+// GCM eSign: signer attachments, in-person signing, and how a correction
 // treats both, against a real Postgres. Run with `npm run test:db`.
 
 process.env.APP_URL ??= "https://sign.example.test";

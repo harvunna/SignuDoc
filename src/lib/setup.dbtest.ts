@@ -501,7 +501,7 @@ test("an email check only vouches for the sender address it was made with", asyn
   assert.notEqual(await readyAt(), null);
 });
 
-// Signly plans: SIGNLY_MAX_USERS (src/lib/plan.ts).
+// GCM eSign plans: SIGNLY_MAX_USERS (src/lib/plan.ts).
 test("sign-up stops when the site has as many accounts as its plan allows", async () => {
   await insertUser("owner@acme.com", "admin");
   await saveSettings({ setupCompletedAt: 1, signupMode: "open" }, database);

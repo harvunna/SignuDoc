@@ -202,7 +202,7 @@ async function listFieldImagesForEnvelopeIds(
       FROM provider_signing_sessions
       WHERE envelope_id IN (${placeholders})
         AND revision_key <> ''
-      -- Signly: files signers attached, used or not (signer-attachments.ts).
+      -- GCM eSign: files signers attached, used or not (signer-attachments.ts).
       UNION
       SELECT envelope_id, storage_key
       FROM signer_attachment_uploads

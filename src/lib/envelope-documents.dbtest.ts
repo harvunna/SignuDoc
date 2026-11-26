@@ -29,7 +29,7 @@ import {
   saveEnvelopeAsTemplate,
 } from "./templates.ts";
 
-// Signly: envelopes of several documents against a real Postgres and real
+// GCM eSign: envelopes of several documents against a real Postgres and real
 // files. Run with `npm run test:db`.
 
 const SETTINGS = [
@@ -48,7 +48,7 @@ const settingsBefore = new Map<string, string | undefined>();
 
 before(async () => {
   database = await openTestDatabase();
-  workDir = await mkdtemp(path.join(tmpdir(), "signly-documents-"));
+  workDir = await mkdtemp(path.join(tmpdir(), "esign-documents-"));
 
   for (const name of SETTINGS) {
     settingsBefore.set(name, process.env[name]);

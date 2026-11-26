@@ -46,7 +46,7 @@ function readFileName(request: Request): string | null {
   }
 }
 
-// Signly: a signer uploads a file for one of their attachment fields
+// GCM eSign: a signer uploads a file for one of their attachment fields
 // (?fieldId=). The body is the file itself; what it is comes from its
 // bytes, not from the type the browser claims.
 export async function POST(

@@ -41,7 +41,7 @@ import {
   saveEnvelopeAsTemplate,
 } from "./templates.ts";
 
-// Signly plans against a real Postgres: a paused site and a month's limit
+// GCM eSign plans against a real Postgres: a paused site and a month's limit
 // stop every way of sending (the web app's send, the API, templates, bulk
 // send), because they all end in sendDraftEnvelope. Run with
 // `npm run test:db`.

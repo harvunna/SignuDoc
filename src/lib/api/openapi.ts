@@ -39,7 +39,7 @@ const emailErrors = {
   },
 };
 
-// Signly plans: for the calls that send. 402 when the site is paused
+// GCM eSign plans: for the calls that send. 402 when the site is paused
 // (site_paused) or this month's envelopes are used up (plan_limit_reached).
 const sendErrors = {
   ...emailErrors,

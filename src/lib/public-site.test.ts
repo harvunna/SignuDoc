@@ -13,6 +13,12 @@ test("the public site is off unless asked for", () => {
   assert.equal(isPublicSite({ SIGNLY_PUBLIC_SITE: "no" }), false);
   assert.equal(isPublicSite({ SIGNLY_PUBLIC_SITE: "true" }), true);
   assert.equal(isPublicSite({ SIGNLY_PUBLIC_SITE: "1" }), true);
+  // The new name, which wins over the old one.
+  assert.equal(isPublicSite({ GCMESIGN_PUBLIC_SITE: "true" }), true);
+  assert.equal(
+    isPublicSite({ GCMESIGN_PUBLIC_SITE: "no", SIGNLY_PUBLIC_SITE: "true" }),
+    false,
+  );
   assert.equal(isPublicSite({ SIGNLY_PUBLIC_SITE: " TRUE " }), true);
 });
 

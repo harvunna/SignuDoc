@@ -9,7 +9,7 @@ import { buildContentDisposition } from "@/lib/services/storage";
 
 type Context = { params: Promise<{ fieldId: string; id: string }> };
 
-// Signly: a file a signer attached, once they signed. A key reaches only
+// GCM eSign: a file a signer attached, once they signed. A key reaches only
 // its owner's own envelopes.
 export async function GET(request: Request, context: Context) {
   const { fieldId, id } = await context.params;

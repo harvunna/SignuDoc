@@ -1,28 +1,28 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 
 import { type DbExecutor, getDb, queryOne } from "./db/connection.ts";
-import { type EnvSource, readEnv } from "./utils/env.ts";
+import { type EnvSource, readSiteEnv } from "./utils/env.ts";
 
-// Signly plans. Each customer has a site of their own, made and looked
+// GCM eSign plans. Each customer has a site of their own, made and looked
 // after by GCM's control panel, and the plan that customer pays for reaches
 // the site as environment variables:
 //
-// - SIGNLY_PLAN_NAME: shown to administrators in Settings.
-// - SIGNLY_MAX_ENVELOPES_PER_MONTH: envelopes sent in a calendar month
+// - GCMESIGN_PLAN_NAME: shown to administrators in Settings.
+// - GCMESIGN_MAX_ENVELOPES_PER_MONTH: envelopes sent in a calendar month
 //   (UTC), whichever way they are sent (the web app, bulk send, templates,
 //   the API). They all go through sendDraftEnvelope, which takes a place
 //   in the month before the envelope goes out (claimMonthlySend).
-// - SIGNLY_MAX_USERS: accounts on the site. Sign-up stops at the limit.
-// - SIGNLY_SITE_STATUS: "paused" when the subscription needs attention.
+// - GCMESIGN_MAX_USERS: accounts on the site. Sign-up stops at the limit.
+// - GCMESIGN_SITE_STATUS: "paused" when the subscription needs attention.
 //   People can still sign in, read and download, and signers can finish
 //   what was already sent to them, but nothing new goes out.
-// - SIGNLY_BILLING_URL: where an administrator sorts out the plan.
+// - GCMESIGN_BILLING_URL: where an administrator sorts out the plan.
 //
 // Every one of them is optional. A site without them has no limits and is
 // active, which is how GCM's own site runs.
 //
 // The control panel reads the site's usage from GET /api/internal/usage,
-// with SIGNLY_CONTROL_SECRET as a bearer token.
+// with GCMESIGN_CONTROL_SECRET as a bearer token.
 
 export type SiteStatus = "active" | "paused";
 
@@ -60,7 +60,7 @@ export function envelopeLimitMessage(limit: number): string {
  * control panel must not stop a customer's site from sending.
  */
 function readLimit(env: EnvSource, name: string): number | null {
-  const value = readEnv(env, name);
+  const value = readSiteEnv(env, name);
 
   if (value === undefined) {
     return null;
@@ -68,7 +68,7 @@ function readLimit(env: EnvSource, name: string): number | null {
 
   if (!/^\d{1,9}$/.test(value)) {
     console.warn(
-      `[plan] ${name} is not a whole number, so it is ignored: no limit.`,
+      `[plan] GCMESIGN_${name} is not a whole number, so it is ignored: no limit.`,
     );
     return null;
   }
@@ -77,7 +77,7 @@ function readLimit(env: EnvSource, name: string): number | null {
 }
 
 function readBillingUrl(env: EnvSource): string | null {
-  const value = readEnv(env, "SIGNLY_BILLING_URL");
+  const value = readSiteEnv(env, "BILLING_URL");
 
   if (!value) {
     return null;
@@ -96,19 +96,19 @@ function readBillingUrl(env: EnvSource): string | null {
 }
 
 export function readPlanConfig(env: EnvSource = process.env): PlanConfig {
-  const status = readEnv(env, "SIGNLY_SITE_STATUS")?.toLowerCase();
+  const status = readSiteEnv(env, "SITE_STATUS")?.toLowerCase();
 
   if (status && status !== "active" && status !== "paused") {
     console.warn(
-      `[plan] SIGNLY_SITE_STATUS is "${status}", which is neither active nor paused, so the site stays active.`,
+      `[plan] GCMESIGN_SITE_STATUS is "${status}", which is neither active nor paused, so the site stays active.`,
     );
   }
 
   return {
     billingUrl: readBillingUrl(env),
-    maxEnvelopesPerMonth: readLimit(env, "SIGNLY_MAX_ENVELOPES_PER_MONTH"),
-    maxUsers: readLimit(env, "SIGNLY_MAX_USERS"),
-    name: readEnv(env, "SIGNLY_PLAN_NAME") ?? null,
+    maxEnvelopesPerMonth: readLimit(env, "MAX_ENVELOPES_PER_MONTH"),
+    maxUsers: readLimit(env, "MAX_USERS"),
+    name: readSiteEnv(env, "PLAN_NAME") ?? null,
     status: status === "paused" ? "paused" : "active",
   };
 }
@@ -422,7 +422,7 @@ function digest(value: string): Buffer {
 }
 
 /**
- * Whether a request carries SIGNLY_CONTROL_SECRET as its bearer token.
+ * Whether a request carries GCMESIGN_CONTROL_SECRET as its bearer token.
  * Without the secret set, nobody gets in: unlike the daily jobs, the usage
  * report tells the caller something, so it is never left open.
  */
@@ -430,7 +430,7 @@ export function isControlPanelRequest(
   authorizationHeader: string | null,
   env: EnvSource = process.env,
 ): boolean {
-  const secret = readEnv(env, "SIGNLY_CONTROL_SECRET");
+  const secret = readSiteEnv(env, "CONTROL_SECRET");
   const presented = /^Bearer (.+)$/.exec(authorizationHeader ?? "")?.[1];
 
   if (!secret || !presented) {

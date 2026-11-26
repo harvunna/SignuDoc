@@ -8,7 +8,7 @@ type PageMetadataInput = {
   title: string;
 };
 
-// Signly: the same title, description, address and share card for every
+// GCM eSign: the same title, description, address and share card for every
 // public page. Off the public site, a page asks search engines to skip it.
 export function buildPageMetadata({
   description,
