@@ -260,6 +260,54 @@ field's `page` counts within its `document` (1 for the first); without
 envelope's `documents` says which pages each one became. One `file` part
 works exactly as before.
 
+### Placing fields by text
+
+You do not have to work out coordinates. There are two ways to say where a
+field goes by the words in the document.
+
+**Text tags.** Type a tag into the document itself (Word, InDesign, anywhere
+that ends up as a PDF with real text), and send `"textTags": true`:
+
+```
+[[signature:client]]   [[initials:client]]   [[date:client]]   [[name:client]]
+[[text:client:label=Company name]]   [[text:client:optional]]
+[[checkbox:client]]   [[number:client]]   [[attachment:client:optional]]
+[[dropdown:client:options=Basic|Plus|Pro]]
+[[radio:client:group=plan:label=Basic]]
+```
+
+The first word is the field type, the second is the signer's `ref`. After
+that, in any order: `optional`, `label=...`, `options=a|b|c`, `group=...`,
+and `w=0.3`, `h=0.05` for a size as a fraction of the page. Each tag becomes
+a field where it stands, and the tag itself is covered with white so signers
+do not see it. Tags are found in every document of the envelope, and are
+added to any `fields` you also give, so `fields` may be empty. The request is
+refused, with the tag and page named, for an unknown type, a signer ref that
+does not exist, or a radio or dropdown tag missing its group or options.
+
+**Anchors.** For a document you cannot put tags in, give a field an `anchor`
+instead of `page`, `x` and `y`:
+
+```json
+{
+  "signer": "client",
+  "type": "signature",
+  "anchor": { "text": "Signature of Client" }
+}
+```
+
+The field goes to the right of the first place those words appear.
+`position` can be `"right"` (the default), `"below"` or `"over"`;
+`occurrence` picks the second, third, ... match; `offsetX` and `offsetY` nudge
+it, as fractions of the page. `page` (and `document`) narrow the search, and
+`document` is needed when there is more than one. `width` and `height` are
+optional here and default by type. Capitals and spacing do not matter.
+
+Both need text the computer can read. A scanned page is a picture, so it has
+no text to find, and the request says so. Tags are covered, not deleted: the
+words are hidden on the page but a program that reads the PDF's text can
+still see them, so do not put anything secret in a tag.
+
 ## The envelope
 
 Every endpoint that returns an envelope returns the same object:

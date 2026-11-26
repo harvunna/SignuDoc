@@ -34,8 +34,13 @@ const nextConfig: NextConfig = {
   // Finished PDFs are drawn with fonts read from disk at runtime, cut down
   // by a WebAssembly subsetter (src/lib/services/pdf-fonts.ts). Listing the
   // files here makes sure they are copied into the deployed functions.
+  // Signly: text tags and anchors read the uploaded PDFs' text with pdf.js
+  // (src/lib/api/text-tags.ts). It is left out of the bundle and its files
+  // are copied into the deployed functions, so its worker can be found.
+  serverExternalPackages: ["pdfjs-dist"],
   outputFileTracingIncludes: {
     "/api/**": [
+      "./node_modules/pdfjs-dist/legacy/build/*.mjs",
       "./src/assets/fonts/*.ttf",
       "./node_modules/harfbuzzjs/dist/harfbuzz-subset.wasm",
     ],
