@@ -314,6 +314,20 @@ for the usage report.
 - Risk: another change to `fields_type_check` (a new field type) must keep
   `attachment` in the list, or placing one fails.
 
+### 8. Public site and search engines
+
+- Setting `SIGNLY_PUBLIC_SITE=true` turns on a marketing site on that one
+  install: a home page for visitors who are not signed in (`/`), and
+  `/docusign-alternative`, `/esign-api` and `/security`. Without the setting
+  those three answer 404 and `/` redirects to sign-in as before.
+- `src/app/robots.ts` and `src/app/sitemap.ts`: on the public site they allow
+  the public pages and list them; everywhere else robots disallows all and the
+  sitemap is empty, so customer sites are never indexed.
+- Words live in `src/lib/marketing-content.ts`; only claims the product backs
+  up. Titles, descriptions, canonical address, share cards and JSON-LD come
+  from `src/lib/marketing-metadata.ts` and the pages.
+- Tests: `src/lib/public-site.test.ts`.
+
 ### 9. Text tags and anchors
 
 - `POST /api/v1/envelopes` accepts `"textTags": true` (fields come from
@@ -378,6 +392,11 @@ repository. Recreate them if the install is ever rebuilt.
       envelope page lists it under "Attached by signers" and downloads it;
       "Sign in person" opens the signing page for the second signer; the
       certificate lists the file and "signed in person".
+
+- [ ] Public site (only where `SIGNLY_PUBLIC_SITE=true`): `/` signed out shows
+      the home page, signed in goes to the dashboard; `/robots.txt` lists the
+      sitemap; `/sitemap.xml` lists four pages; the three landing pages open.
+      Where it is not set: those pages answer 404 and robots disallows all.
 
 - [ ] Text tags: create an envelope through Swagger (`/api/v1`) with a PDF
       that has `[[signature:client]]` typed in it and `"textTags": true`,
