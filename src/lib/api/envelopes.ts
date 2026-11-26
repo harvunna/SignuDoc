@@ -20,6 +20,11 @@ import {
 } from "../schemas/envelope.ts";
 import { fieldTypeSchema } from "../schemas/field.ts";
 import { listEnvelopeDocuments } from "../envelope-documents.ts";
+import {
+  placeFieldsByText,
+  TextPlacementError,
+  usesTextPlacement,
+} from "./text-placement.ts";
 import type { SourcePdfInput } from "../services/document-combine.ts";
 import {
   MAX_COPY_RECIPIENTS_PER_ENVELOPE,
@@ -96,29 +101,57 @@ const apiSignerSchema = z.object({
   step: z.number().int().positive().max(MAX_SIGNERS_CEILING).optional(),
 });
 
-const apiFieldSchema = z.object({
-  /**
-   * Signly: which document (1-based, in upload order) `page` counts in.
-   * Left out, `page` counts across all the documents together.
-   */
-  document: z
-    .number()
-    .int()
-    .positive()
-    .max(MAX_DOCUMENTS_PER_ENVELOPE)
-    .optional(),
-  groupId: z.string().trim().min(1).max(64).optional(),
-  height: z.number().finite().gt(0).max(1),
-  label: z.string().trim().max(120).optional(),
-  options: z.array(z.string()).optional(),
-  page: z.number().int().positive(),
-  required: z.boolean().optional(),
-  signer: refSchema,
-  type: fieldTypeSchema,
-  width: z.number().finite().gt(0).max(1),
-  x: z.number().finite().min(0).max(1),
-  y: z.number().finite().min(0).max(1),
+// Signly: where a field goes by the words next to it, for a document with
+// no coordinates to give. See src/lib/api/text-tags.ts.
+const apiAnchorSchema = z.object({
+  occurrence: z.number().int().positive().max(100).optional(),
+  offsetX: z.number().finite().min(-1).max(1).optional(),
+  offsetY: z.number().finite().min(-1).max(1).optional(),
+  position: z.enum(["right", "below", "over"]).optional(),
+  text: z.string().trim().min(1).max(200),
 });
+
+const apiFieldSchema = z
+  .object({
+    /** Signly: find the place by the text next to it instead of x and y. */
+    anchor: apiAnchorSchema.optional(),
+    /**
+     * Signly: which document (1-based, in upload order) `page` counts in.
+     * Left out, `page` counts across all the documents together.
+     */
+    document: z
+      .number()
+      .int()
+      .positive()
+      .max(MAX_DOCUMENTS_PER_ENVELOPE)
+      .optional(),
+    groupId: z.string().trim().min(1).max(64).optional(),
+    height: z.number().finite().gt(0).max(1).optional(),
+    label: z.string().trim().max(120).optional(),
+    options: z.array(z.string()).optional(),
+    page: z.number().int().positive().optional(),
+    required: z.boolean().optional(),
+    signer: refSchema,
+    type: fieldTypeSchema,
+    width: z.number().finite().gt(0).max(1).optional(),
+    x: z.number().finite().min(0).max(1).optional(),
+    y: z.number().finite().min(0).max(1).optional(),
+  })
+  .superRefine((field, ctx) => {
+    if (field.anchor) {
+      return;
+    }
+
+    for (const key of ["page", "x", "y", "width", "height"] as const) {
+      if (field[key] === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Required, unless the field has an anchor.`,
+          path: [key],
+        });
+      }
+    }
+  });
 
 export const apiCreateEnvelopeSchema = z
   .object({
@@ -126,15 +159,26 @@ export const apiCreateEnvelopeSchema = z
       .array(z.object({ email: emailSchema, name: nameSchema }))
       .max(MAX_COPY_RECIPIENTS_PER_ENVELOPE)
       .optional(),
-    fields: z.array(apiFieldSchema).min(1).max(MAX_API_FIELDS),
+    // Signly: may be empty when textTags is true and the documents carry
+    // [[type:signer]] tags.
+    fields: z.array(apiFieldSchema).max(MAX_API_FIELDS),
     metadata: metadataSchema.optional(),
     send: apiSendOptionsSchema.optional(),
     // The install's own limit, MAX_SIGNERS_PER_ENVELOPE, is checked when
     // the signers are saved, as in the web app.
     signers: z.array(apiSignerSchema).min(1).max(MAX_SIGNERS_CEILING),
+    textTags: z.boolean().optional(),
     title: envelopeTitleSchema,
   })
   .superRefine((value, ctx) => {
+    if (value.fields.length === 0 && !value.textTags) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "List at least one field, or set textTags to true.",
+        path: ["fields"],
+      });
+    }
+
     const refs = new Set<string>();
 
     for (const [index, signer] of value.signers.entries()) {
@@ -159,6 +203,22 @@ export const apiCreateEnvelopeSchema = z
       }
     }
   });
+
+/** A field with its place settled, by coordinates or from text. */
+type ResolvedField = {
+  document?: number;
+  groupId?: string;
+  height: number;
+  label?: string;
+  options?: string[];
+  page: number;
+  required?: boolean;
+  signer: string;
+  type: z.infer<typeof fieldTypeSchema>;
+  width: number;
+  x: number;
+  y: number;
+};
 
 export type ApiCreateEnvelopeInput = z.infer<typeof apiCreateEnvelopeSchema>;
 export type ApiSendOptions = z.infer<typeof apiSendOptionsSchema>;
@@ -231,9 +291,39 @@ export async function createEnvelopeForApi(
     onCreated?: (envelopeId: string) => Promise<void>;
   } = {},
 ): Promise<ApiEnvelope> {
+  // Signly: tags and anchors become ordinary fields first, and the tags are
+  // covered in the PDFs that are kept.
+  let sourcePdfs = sourcePdf;
+  let requestedFields: ReadonlyArray<ResolvedField> =
+    input.fields as ResolvedField[];
+
+  if (usesTextPlacement(input)) {
+    const list = Array.isArray(sourcePdf) ? sourcePdf : [sourcePdf];
+
+    try {
+      const placed = await placeFieldsByText(
+        input,
+        list.map((pdf) => ({ body: pdf.body, filename: pdf.filename })),
+        MAX_API_FIELDS,
+      );
+
+      requestedFields = placed.fields;
+      sourcePdfs = list.map((pdf, index) => ({
+        ...pdf,
+        body: placed.pdfs[index]!.body,
+      }));
+    } catch (error) {
+      if (error instanceof TextPlacementError) {
+        throw new EnvelopeMutationError(error.message, 400);
+      }
+
+      throw error;
+    }
+  }
+
   const draft = await createDraftEnvelope(
     actor.userId,
-    { sourcePdf, title: input.title },
+    { sourcePdf: sourcePdfs, title: input.title },
     { database },
   );
   const envelopeId = draft.envelope.id;
@@ -242,7 +332,7 @@ export async function createEnvelopeForApi(
   try {
     // Every field's page in the joined PDF. A field that names its document
     // counts its page within that document.
-    const pages = input.fields.map((field, index) => {
+    const pages = requestedFields.map((field, index) => {
       if (field.document === undefined) {
         if (field.page > draft.envelope.pageCount) {
           throw new EnvelopeMutationError(
@@ -314,7 +404,7 @@ export async function createEnvelopeForApi(
       actor.userId,
       envelopeId,
       {
-        fields: input.fields.map((field, index) => ({
+        fields: requestedFields.map((field, index) => ({
           groupId: field.groupId,
           height: field.height,
           label: field.label,
