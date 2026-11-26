@@ -6,6 +6,7 @@ import {
   type ApiKeyScope,
 } from "../api-keys.ts";
 import { apiError } from "../api/http.ts";
+import { authenticateOAuthToken, looksLikeOAuthToken } from "../oauth.ts";
 import { logSecurityEvent } from "../security/logging.ts";
 import { consumeRateLimit, peekRateLimit } from "../security/rate-limit.ts";
 import { getClientIpAddress, getRequestPathname } from "../security/request.ts";
@@ -43,7 +44,10 @@ export async function requireApiKey(
   // away a good one from it: another worker of an app still sending a key
   // that was revoked, or, off Vercel, a stranger who forged the address in
   // X-Forwarded-For to lock an integration out.
-  const principal = await authenticateApiKey(presented);
+  // An OAuth access token (sdo_…, from POST /api/oauth/token) or an API key.
+  const principal = looksLikeOAuthToken(presented)
+    ? await authenticateOAuthToken(presented)
+    : await authenticateApiKey(presented);
 
   if (!principal) {
     return refuseBadKey(request, ipAddress);

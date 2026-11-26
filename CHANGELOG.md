@@ -8,6 +8,15 @@ release says when it does.
 
 ## [Unreleased]
 
+### API
+
+- OAuth 2.0 for the API (GCM eSign change). An account registers a client in
+  Settings, My OAuth clients, and the app trades its id and secret at
+  `POST /api/oauth/token` (client credentials grant) for an access token that
+  lasts an hour and is sent as `Authorization: Bearer sdo_…`, alongside
+  `sdk_` API keys. Scopes are `read` and `write`. This release changes the
+  database: run `npm run db:migrate`. See [docs/api.md](docs/api.md).
+
 ## [0.9.0] - 2026-11-22
 
 People can now work as a team, seeing the envelopes their teammates send,

@@ -3,6 +3,7 @@ import { SettingsShell } from "@/components/settings/settings-shell";
 import { PlanPanel } from "@/components/settings/plan-panel";
 import { UpdatesPanel } from "@/components/settings/updates-panel";
 import { ApiKeysPanel } from "@/components/settings/api-keys-panel";
+import { OAuthClientsPanel } from "@/components/settings/oauth-clients-panel";
 import { isAdminUser } from "@/lib/auth/admin";
 import { accountClosureBlock } from "@/lib/account";
 import { getAuthSession } from "@/lib/auth/server";
@@ -46,6 +47,8 @@ export default async function SettingsPage() {
       {session && !isAdmin && !settings.hosted ? (
         <ApiKeysPanel view="own" />
       ) : null}
+      {/* OAuth 2.0 clients: the same people, for apps that fetch tokens. */}
+      {session && !settings.hosted ? <OAuthClientsPanel /> : null}
       {planUsage ? <PlanPanel usage={planUsage} /> : null}
       {isAdmin ? (
         <OrganizationSettings

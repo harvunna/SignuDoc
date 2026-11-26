@@ -44,6 +44,8 @@ export const systemAuditEventTypes = [
   "email_domain_changed",
   "api_key_created",
   "api_key_revoked",
+  "oauth_client_created",
+  "oauth_client_revoked",
   "webhook_endpoint_created",
   "webhook_endpoint_changed",
   "webhook_endpoint_deleted",

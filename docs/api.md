@@ -70,6 +70,68 @@ What to know about keys:
 - Making and revoking keys is recorded in the site audit trail (Settings,
   Organization, Sign-in security), and each key shows when it was last used.
 
+## OAuth 2.0
+
+An app that would rather fetch short-lived tokens than keep a long-lived key
+can use OAuth 2.0 with the **client credentials** grant
+([RFC 6749, 4.4](https://www.rfc-editor.org/rfc/rfc6749#section-4.4)). Like
+an API key, an OAuth client acts as the person who made it.
+
+1. Under **Settings, My OAuth clients**, give the client a name and choose
+   **Read and write** or **Read only**.
+2. Copy the client id (`gcmc_…`) and the client secret (`gcms_…`). The secret
+   is shown only once; GCM eSign keeps only a hash of it.
+3. Trade them for an access token at `POST /api/oauth/token`, with HTTP Basic
+   or with `client_id` and `client_secret` in the form body:
+
+```sh
+curl https://sign.example.com/api/oauth/token \
+  -u "gcmc_…:gcms_…" \
+  -d grant_type=client_credentials \
+  -d scope=read
+```
+
+```json
+{
+  "access_token": "sdo_…",
+  "expires_in": 3600,
+  "scope": "read",
+  "token_type": "Bearer"
+}
+```
+
+4. Send the access token like a key:
+
+```sh
+curl https://sign.example.com/api/v1/me \
+  -H "Authorization: Bearer sdo_…"
+```
+
+What to know about OAuth:
+
+- **`scope` is optional.** Left out, the token has the client's own access.
+  `read` or `write` asks for that, never more than the client has; `write`
+  includes `read`. Anything else is `invalid_scope`.
+- **Tokens last an hour** (`expires_in`). Keep one until it nears its end
+  rather than asking for a new one with every call; a client may ask for 120
+  tokens in ten minutes. Nothing is refreshed: ask again with the secret.
+- **Revoking a client** under My OAuth clients stops its tokens at once. A
+  client also stops when its owner's email is not verified, when an
+  administrator who made it stops being one, or when its owner's account is
+  being closed.
+- **Errors at the token endpoint** are the OAuth ones, not the API's:
+  `{"error": "invalid_client", "error_description": "…"}` with 400 for
+  `invalid_request`, `unsupported_grant_type` and `invalid_scope`, and 401
+  for `invalid_client`. A wrong secret and an unknown id look the same. Too
+  many failed attempts from an address get 429 with `Retry-After`.
+- **The secret stays on your server.** Never put it in a browser or a mobile
+  app. Making and revoking clients is in the site audit trail, like keys.
+- An access token otherwise behaves like a key: the same scopes, the same
+  rate limit across `/api/v1`, and the same `401`, `403` and `429` answers.
+  Each person can have up to 10 clients that have not been revoked.
+- Only this grant is supported. There is no sign-in page for apps that act
+  for other people (authorization code), and no refresh tokens.
+
 ## Errors
 
 Every error has the same shape, and the code is meant for your program:
@@ -86,7 +148,7 @@ Every error has the same shape, and the code is meant for your program:
 | Status | Code                     | Meaning                                                                                   |
 | ------ | ------------------------ | ----------------------------------------------------------------------------------------- |
 | 400    | `invalid_request`        | The request is missing something or has a value that is not allowed.                      |
-| 401    | `unauthorized`           | No key, or one that is unknown, revoked or expired. All of these look the same.           |
+| 401    | `unauthorized`           | No key or token, or one that is unknown, revoked or expired. All of these look the same.  |
 | 402    | `site_paused`            | The site's subscription needs attention, so nothing new can be sent. Reading still works. |
 | 402    | `plan_limit_reached`     | This month's envelopes (UTC) are used up under the site's plan. Nothing was sent.         |
 | 403    | `forbidden`              | The key may not do this, such as a read-only key asked to send.                           |

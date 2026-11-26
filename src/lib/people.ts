@@ -7,6 +7,7 @@ import {
   withTransaction,
 } from "./db/connection.ts";
 import { revokeApiKeysForUser } from "./api-keys.ts";
+import { revokeOAuthClientsForUser } from "./oauth.ts";
 import { CURRENT_IDENTITY_VERIFIED_AT_SQL } from "./part11.ts";
 import type { RequestClient } from "./security/request.ts";
 import { recordSystemAuditEvent } from "./services/system-audit.ts";
@@ -294,6 +295,10 @@ export async function setPersonRole(
       // revokeApiKey locks a key row and then the audit chain, so this
       // takes them in the same order and the two cannot deadlock.
       await revokeApiKeysForUser(targetUserId, "role_removed", tx, {
+        email: actor.email,
+        userId: actingUserId,
+      });
+      await revokeOAuthClientsForUser(targetUserId, "role_removed", tx, {
         email: actor.email,
         userId: actingUserId,
       });

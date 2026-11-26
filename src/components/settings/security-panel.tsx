@@ -25,6 +25,8 @@ const EVENT_LABELS: Record<SystemAuditEvent["event"], string> = {
   account_deleted: "Account deleted",
   api_key_created: "API key created",
   api_key_revoked: "API key revoked",
+  oauth_client_created: "OAuth client created",
+  oauth_client_revoked: "OAuth client revoked",
   email_domain_changed: "Email domain changed",
   embed_origin_added: "Site allowed to embed signing",
   embed_origin_removed: "Site no longer allowed to embed signing",
@@ -115,6 +117,17 @@ function describeEvent(event: SystemAuditEvent): string {
       return [
         typeof metadata.name === "string" ? metadata.name : null,
         typeof metadata.prefix === "string" ? `${metadata.prefix}…` : null,
+        metadata.reason === "role_removed"
+          ? "owner is no longer an administrator"
+          : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+    case "oauth_client_created":
+    case "oauth_client_revoked":
+      return [
+        typeof metadata.name === "string" ? metadata.name : null,
+        typeof metadata.clientId === "string" ? metadata.clientId : null,
         metadata.reason === "role_removed"
           ? "owner is no longer an administrator"
           : null,
