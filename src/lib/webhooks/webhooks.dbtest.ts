@@ -164,6 +164,7 @@ async function createAdmin(role = "admin"): Promise<ApiActor> {
   if (role !== "admin") {
     return {
       apiKeyId: "",
+      credentialId: "",
       email,
       ipAddress: null,
       name: "Ops",
@@ -180,6 +181,7 @@ async function createAdmin(role = "admin"): Promise<ApiActor> {
 
   return {
     apiKeyId: summary.id,
+    credentialId: summary.id,
     email,
     ipAddress: null,
     name: "Ops Admin",

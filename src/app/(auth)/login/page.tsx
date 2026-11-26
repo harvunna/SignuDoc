@@ -1,10 +1,12 @@
 import { LoginShell } from "@/components/auth/login-shell";
+import { safePostSignInPath } from "@/lib/auth/next-path";
 import { redirectIfSignedIn } from "@/lib/auth/server";
 import { readPasswordSignInPolicy, readSsoConfig } from "@/lib/auth/sso";
 
 type LoginPageProps = {
   searchParams?: Promise<{
     error?: string;
+    next?: string;
     token?: string;
   }>;
 };
@@ -14,8 +16,10 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   // A link from a password reset email is for this page whoever is signed
   // in, so it is shown as it is.
+  const nextPath = safePostSignInPath(resolvedSearchParams?.next);
+
   if (!resolvedSearchParams?.token && !resolvedSearchParams?.error) {
-    await redirectIfSignedIn();
+    await redirectIfSignedIn(nextPath ?? undefined);
   }
 
   const error = resolvedSearchParams?.error ?? null;
@@ -24,6 +28,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   return (
     <LoginShell
+      nextPath={nextPath}
       passwordSignIn={
         passwordPolicy.enabled
           ? "on"

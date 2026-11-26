@@ -133,6 +133,7 @@ async function createAdmin(): Promise<ApiActor> {
 
   return {
     apiKeyId: summary.id,
+    credentialId: summary.id,
     email,
     ipAddress: null,
     name: "Ops Admin",
@@ -586,7 +587,7 @@ async function linkFor(
   admin: ApiActor,
   envelopeId: string,
   signerId: string,
-  apiKeyId: string = admin.apiKeyId,
+  apiKeyId: string = admin.credentialId,
 ) {
   const link = await issueEmbedLink(
     { apiKeyId, envelopeId, origin: ORIGIN, signerId, userId: admin.userId },

@@ -145,7 +145,12 @@ export async function handleApi(
 
   const context: ApiContext = {
     actor: {
-      apiKeyId: principal.apiKey.id,
+      // An OAuth client is not a row of api_keys, which the evidence for
+      // an embedded link points at, so it names no key.
+      apiKeyId: principal.oauth ? null : principal.apiKey.id,
+      credentialId: principal.oauth
+        ? `oauth:${principal.apiKey.id}:${principal.user.id}`
+        : principal.apiKey.id,
       email: principal.user.email,
       ipAddress: getClientIpAddress(request.headers),
       isAdmin: principal.user.isAdmin,
@@ -252,7 +257,7 @@ export async function runIdempotently(
   }
 
   const claim = {
-    apiKeyId: context.actor.apiKeyId,
+    apiKeyId: context.actor.credentialId,
     key,
     requestHash: hashRequest(route, body),
   };
@@ -462,7 +467,7 @@ export async function applyAccountLimit(
 }
 
 function accountLimitKey(context: ApiContext, input: AccountLimit) {
-  return `${input.key}:${context.actor.apiKeyId}`;
+  return `${input.key}:${context.actor.credentialId}`;
 }
 
 function accountLimitRefusal(

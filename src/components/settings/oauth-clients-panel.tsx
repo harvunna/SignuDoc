@@ -28,10 +28,13 @@ export function OAuthClientsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [scope, setScope] = useState<"read" | "write">("write");
+  const [type, setType] = useState<"confidential" | "public">("confidential");
+  // One address per line, for apps that ask people to sign in.
+  const [redirects, setRedirects] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [created, setCreated] = useState<{
     clientId: string;
-    clientSecret: string;
+    clientSecret: string | null;
     name: string;
   } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -83,27 +86,36 @@ export function OAuthClientsPanel() {
 
     try {
       const response = await fetch(endpoint, {
-        body: JSON.stringify({ name, scope }),
+        body: JSON.stringify({
+          name,
+          redirectUris: redirects
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean),
+          scope,
+          type,
+        }),
         headers: { "content-type": "application/json" },
         method: "POST",
       });
       const payload = (await response.json().catch(() => null)) as {
-        clientSecret?: string;
+        clientSecret?: string | null;
         error?: string;
         summary?: OAuthClientSummary;
       } | null;
 
-      if (!response.ok || !payload?.clientSecret || !payload.summary) {
+      if (!response.ok || !payload?.summary) {
         setError(payload?.error ?? GENERIC_ERROR_MESSAGE);
         return;
       }
 
       setCreated({
         clientId: payload.summary.clientId,
-        clientSecret: payload.clientSecret,
+        clientSecret: payload.clientSecret ?? null,
         name: payload.summary.name,
       });
       setName("");
+      setRedirects("");
       setRevision((value) => value + 1);
     } catch {
       setError(GENERIC_ERROR_MESSAGE);
@@ -140,7 +152,7 @@ export function OAuthClientsPanel() {
   }
 
   async function copySecret() {
-    if (!created) {
+    if (!created?.clientSecret) {
       return;
     }
 
@@ -159,12 +171,14 @@ export function OAuthClientsPanel() {
           My OAuth clients
         </h3>
         <p className="max-w-2xl text-sm leading-6 text-(--secondary)">
-          For apps that sign in to the API with OAuth 2.0 (client credentials).
-          The app trades its client id and secret at{" "}
+          For apps that use the API with OAuth 2.0. An app of yours that acts as
+          you trades its client id and secret at{" "}
           <code className="font-mono">/api/oauth/token</code> for an access
-          token that lasts an hour. A client acts as you, like an API key. Keep
-          the secret in the app&apos;s secret settings, never in a browser, and
-          revoke the client as soon as it may have leaked.
+          token that lasts an hour. An app that acts for other people sends them
+          to <code className="font-mono">/oauth/authorize</code> to allow it:
+          add the addresses it returns them to. Keep a secret in the app&apos;s
+          secret settings, never in a browser, and revoke the client as soon as
+          it may have leaked.
         </p>
       </div>
 
@@ -183,6 +197,42 @@ export function OAuthClientsPanel() {
             placeholder="For example: Billing app"
             value={name}
           />
+        </label>
+        <label className="grid gap-1.5 sm:col-span-3">
+          <span className="text-[0.8125rem] font-semibold text-(--secondary)">
+            Sign-in return addresses (optional, one per line)
+          </span>
+          <textarea
+            className="field-input min-h-20 font-mono text-sm"
+            disabled={isCreating}
+            name="oauth-client-redirects"
+            onChange={(event) => setRedirects(event.target.value)}
+            placeholder="https://billing.example.com/oauth/callback"
+            value={redirects}
+          />
+        </label>
+        <label className="grid gap-1.5 sm:col-span-3">
+          <span className="text-[0.8125rem] font-semibold text-(--secondary)">
+            Type
+          </span>
+          <select
+            className="field-input"
+            disabled={isCreating}
+            name="oauth-client-type"
+            onChange={(event) =>
+              setType(
+                event.target.value === "public" ? "public" : "confidential",
+              )
+            }
+            value={type}
+          >
+            <option value="confidential">
+              Confidential: a server that keeps a secret
+            </option>
+            <option value="public">
+              Public: a browser or phone app, no secret (needs return addresses)
+            </option>
+          </select>
         </label>
         <label className="grid gap-1.5 sm:col-span-2">
           <span className="text-[0.8125rem] font-semibold text-(--secondary)">
@@ -222,24 +272,32 @@ export function OAuthClientsPanel() {
           role="status"
         >
           <p className="text-sm font-semibold text-(--fg)">
-            Copy the secret for {created.name} now. It is not shown again.
+            {created.clientSecret
+              ? `Copy the secret for ${created.name} now. It is not shown again.`
+              : `${created.name} is ready. A public client has no secret.`}
           </p>
           <p className="text-sm text-(--secondary)">Client id</p>
           <code className="block overflow-x-auto rounded-lg border border-(--border) bg-(--paper) px-3 py-2 font-mono text-sm break-all text-(--fg)">
             {created.clientId}
           </code>
-          <p className="text-sm text-(--secondary)">Client secret</p>
-          <code className="block overflow-x-auto rounded-lg border border-(--border) bg-(--paper) px-3 py-2 font-mono text-sm break-all text-(--fg)">
-            {created.clientSecret}
-          </code>
+          {created.clientSecret ? (
+            <>
+              <p className="text-sm text-(--secondary)">Client secret</p>
+              <code className="block overflow-x-auto rounded-lg border border-(--border) bg-(--paper) px-3 py-2 font-mono text-sm break-all text-(--fg)">
+                {created.clientSecret}
+              </code>
+            </>
+          ) : null}
           <div className="flex flex-wrap gap-2">
-            <button
-              className="btn-quiet"
-              onClick={() => void copySecret()}
-              type="button"
-            >
-              {copied ? "Copied" : "Copy secret"}
-            </button>
+            {created.clientSecret ? (
+              <button
+                className="btn-quiet"
+                onClick={() => void copySecret()}
+                type="button"
+              >
+                {copied ? "Copied" : "Copy secret"}
+              </button>
+            ) : null}
             <button
               className="btn-quiet"
               onClick={() => setCreated(null)}
@@ -283,10 +341,18 @@ export function OAuthClientsPanel() {
                   <span className="pill pill-neutral">
                     {client.scope === "write" ? "Read and write" : "Read only"}
                   </span>
+                  {client.isPublic ? (
+                    <span className="pill pill-neutral">Public</span>
+                  ) : null}
                 </div>
                 <p className="font-mono text-sm break-all text-(--secondary)">
                   {client.clientId}
                 </p>
+                {client.redirectUris.length > 0 ? (
+                  <p className="font-mono text-xs break-all text-(--secondary)">
+                    Returns to: {client.redirectUris.join(", ")}
+                  </p>
+                ) : null}
                 <p className="text-sm text-(--secondary)">
                   Made on {formatDate(client.createdAt)}.{" "}
                   {lastUsed ? `Last used ${lastUsed}.` : "Not used yet."}

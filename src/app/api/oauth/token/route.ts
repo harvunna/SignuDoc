@@ -1,65 +1,33 @@
 import { NextResponse } from "next/server";
 
-import { readBodyWithin } from "@/lib/api/body";
 import {
-  authenticateOAuthClient,
-  issueOAuthToken,
-  resolveTokenScope,
-} from "@/lib/oauth";
-import { logRouteError, logSecurityEvent } from "@/lib/security/logging";
-import { consumeRateLimit, peekRateLimit } from "@/lib/security/rate-limit";
+  exchangeAuthorizationCode,
+  refreshOAuthToken,
+} from "@/lib/oauth-authorization";
+import {
+  authenticateClientRequest,
+  OAUTH_NO_STORE,
+  oauthError,
+  readOAuthForm,
+} from "@/lib/oauth-http";
+import { issueOAuthToken, resolveTokenScope } from "@/lib/oauth";
+import { logRouteError } from "@/lib/security/logging";
+import { consumeRateLimit } from "@/lib/security/rate-limit";
 import { getClientIpAddress, getRequestPathname } from "@/lib/security/request";
 
-// The OAuth 2.0 token endpoint (RFC 6749 4.4): the client credentials grant.
-// A client sends its id and secret and gets an access token for /api/v1.
+// The OAuth 2.0 token endpoint (RFC 6749 3.2). Three grants:
+// client_credentials (4.4), for an app acting as the account that made it;
+// authorization_code (4.1.3, with PKCE), for an app acting as a person who
+// allowed it; and refresh_token (6), to renew that without asking again.
 // Answers follow RFC 6749 5: JSON with "error" and "error_description", and
 // never cached. See docs/api.md.
 
-const MAX_BODY_BYTES = 8 * 1024;
-const FAILED_ATTEMPT_LIMIT = 30;
-const FAILED_ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
-const TOKEN_LIMIT = 120;
+const GRANTS = ["authorization_code", "client_credentials", "refresh_token"];
 const TOKEN_WINDOW_MS = 10 * 60 * 1000;
-
-const NO_STORE = { "cache-control": "no-store", pragma: "no-cache" };
-
-function oauthError(
-  status: number,
-  error: string,
-  description: string,
-  headers: Record<string, string> = {},
-) {
-  return NextResponse.json(
-    { error, error_description: description },
-    { headers: { ...NO_STORE, ...headers }, status },
-  );
-}
-
-/** The id and secret from HTTP Basic (RFC 6749 2.3.1), or null. */
-function readBasicCredentials(headers: Headers) {
-  const match = /^Basic\s+(\S+)\s*$/i.exec(headers.get("authorization") ?? "");
-
-  if (!match?.[1]) {
-    return null;
-  }
-
-  try {
-    const decoded = Buffer.from(match[1], "base64").toString("utf8");
-    const colon = decoded.indexOf(":");
-
-    if (colon < 0) {
-      return null;
-    }
-
-    // Both parts are form-urlencoded before they are joined.
-    return {
-      id: decodeURIComponent(decoded.slice(0, colon).replace(/\+/g, " ")),
-      secret: decodeURIComponent(decoded.slice(colon + 1).replace(/\+/g, " ")),
-    };
-  } catch {
-    return null;
-  }
-}
+// An app acting for many people asks for far more than one acting as its
+// owner, and each of those requests needs a code or a refresh token.
+const CREDENTIALS_LIMIT = 120;
+const PEOPLE_LIMIT = 1200;
 
 export async function POST(request: Request) {
   try {
@@ -81,136 +49,123 @@ export async function POST(request: Request) {
 }
 
 async function issue(request: Request) {
-  const ipAddress = getClientIpAddress(request.headers);
-  const failureKey = `oauth-failures:${ipAddress ?? "unknown"}`;
-  const failures = await peekRateLimit({
-    key: failureKey,
-    limit: FAILED_ATTEMPT_LIMIT,
-  });
+  const form = await readOAuthForm(request);
 
-  if (!failures.allowed) {
-    return oauthError(
-      429,
-      "invalid_request",
-      "Too many failed attempts. Try again later.",
-      { "retry-after": String(failures.retryAfterSeconds) },
-    );
+  if (form instanceof Response) {
+    return form;
   }
 
-  const contentType = request.headers.get("content-type") ?? "";
+  const grantType = form.get("grant_type");
 
-  if (!/^application\/x-www-form-urlencoded\b/i.test(contentType)) {
-    return oauthError(
-      400,
-      "invalid_request",
-      "Send the request as application/x-www-form-urlencoded.",
-    );
-  }
-
-  const bytes = await readBodyWithin(request, MAX_BODY_BYTES);
-
-  if (!bytes) {
-    return oauthError(400, "invalid_request", "The request is too large.");
-  }
-
-  const form = new URLSearchParams(new TextDecoder().decode(bytes));
-  const basic = readBasicCredentials(request.headers);
-  const bodyId = form.get("client_id");
-  const bodySecret = form.get("client_secret");
-
-  if (basic && (bodyId || bodySecret)) {
-    return oauthError(
-      400,
-      "invalid_request",
-      "Send the client credentials one way only: HTTP Basic or the form body.",
-    );
-  }
-
-  if (form.get("grant_type") !== "client_credentials") {
+  if (!grantType || !GRANTS.includes(grantType)) {
     return oauthError(
       400,
       "unsupported_grant_type",
-      "Only grant_type=client_credentials is supported.",
+      "grant_type must be client_credentials, authorization_code or refresh_token.",
     );
   }
 
-  const clientId = basic?.id ?? bodyId;
-  const clientSecret = basic?.secret ?? bodySecret;
-  const challenge: Record<string, string> = basic
-    ? { "www-authenticate": 'Basic realm="oauth"' }
-    : {};
+  const authenticated = await authenticateClientRequest(request, form);
 
-  if (!clientId || !clientSecret) {
+  if ("response" in authenticated) {
+    return authenticated.response;
+  }
+
+  const { client } = authenticated;
+
+  if (grantType === "client_credentials" && client.isPublic) {
     return oauthError(
-      401,
-      "invalid_client",
-      "Send client_id and client_secret, or HTTP Basic credentials.",
-      challenge,
+      400,
+      "unauthorized_client",
+      "A public client has no secret, so it cannot use client_credentials.",
     );
   }
 
-  const client = await authenticateOAuthClient(clientId, clientSecret);
-
-  if (!client) {
-    const counted = await consumeRateLimit({
-      key: failureKey,
-      limit: FAILED_ATTEMPT_LIMIT,
-      windowMs: FAILED_ATTEMPT_WINDOW_MS,
-    });
-
-    if (counted.allowed) {
-      logSecurityEvent("warn", {
-        category: "oauth_client_rejected",
-        ipAddress,
-        message: "Refused an OAuth token request with bad client credentials.",
-        path: getRequestPathname(request),
-      });
-    }
-
-    return oauthError(
-      counted.allowed ? 401 : 429,
-      "invalid_client",
-      "The client id or secret is not valid.",
-      counted.allowed
-        ? challenge
-        : { "retry-after": String(counted.retryAfterSeconds) },
-    );
-  }
-
-  const issued = await consumeRateLimit({
-    key: `oauth-token:${client.id}`,
-    limit: TOKEN_LIMIT,
+  const allowance = await consumeRateLimit({
+    key: `oauth-token:${grantType}:${client.id}`,
+    limit:
+      grantType === "client_credentials" ? CREDENTIALS_LIMIT : PEOPLE_LIMIT,
     windowMs: TOKEN_WINDOW_MS,
   });
 
-  if (!issued.allowed) {
+  if (!allowance.allowed) {
     return oauthError(
       429,
       "invalid_request",
       "This client has asked for too many tokens. Reuse the one you have until it expires.",
-      { "retry-after": String(issued.retryAfterSeconds) },
+      { "retry-after": String(allowance.retryAfterSeconds) },
     );
   }
 
-  const scope = resolveTokenScope(form.get("scope"), client.scope);
+  if (grantType === "client_credentials") {
+    const scope = resolveTokenScope(form.get("scope"), client.scope);
 
-  if (!scope) {
-    return oauthError(
-      400,
-      "invalid_scope",
-      "Scope must be read or write, and no more than the client has.",
-    );
+    if (!scope) {
+      return oauthError(
+        400,
+        "invalid_scope",
+        "Scope must be read or write, and no more than the client has.",
+      );
+    }
+
+    return tokenResponse(await issueOAuthToken(client, scope));
   }
 
-  const token = await issueOAuthToken(client, scope);
+  if (grantType === "authorization_code") {
+    const code = form.get("code");
+    const redirectUri = form.get("redirect_uri");
+    const codeVerifier = form.get("code_verifier");
 
+    if (!code || !redirectUri || !codeVerifier) {
+      return oauthError(
+        400,
+        "invalid_request",
+        "code, redirect_uri and code_verifier are required.",
+      );
+    }
+
+    const result = await exchangeAuthorizationCode(client, {
+      code,
+      codeVerifier,
+      redirectUri,
+    });
+
+    return result.ok
+      ? tokenResponse(result.tokens)
+      : oauthError(400, result.error, result.description);
+  }
+
+  const refreshToken = form.get("refresh_token");
+
+  if (!refreshToken) {
+    return oauthError(400, "invalid_request", "refresh_token is required.");
+  }
+
+  const result = await refreshOAuthToken(
+    client,
+    refreshToken,
+    form.get("scope"),
+  );
+
+  return result.ok
+    ? tokenResponse(result.tokens)
+    : oauthError(400, result.error, result.description);
+}
+
+function tokenResponse(tokens: {
+  accessToken: string;
+  expiresIn: number;
+  refreshToken?: string;
+  scope: string;
+}) {
   return NextResponse.json(
     {
-      access_token: token.accessToken,
-      expires_in: token.expiresIn,
-      scope: token.scope,
+      access_token: tokens.accessToken,
+      expires_in: tokens.expiresIn,
+      ...(tokens.refreshToken ? { refresh_token: tokens.refreshToken } : {}),
+      scope: tokens.scope,
       token_type: "Bearer",
     },
-    { headers: NO_STORE },
+    { headers: OAUTH_NO_STORE },
   );
 }

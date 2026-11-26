@@ -224,7 +224,13 @@ export type ApiCreateEnvelopeInput = z.infer<typeof apiCreateEnvelopeSchema>;
 export type ApiSendOptions = z.infer<typeof apiSendOptionsSchema>;
 
 export type ApiActor = {
-  apiKeyId: string;
+  /** Null for a caller that came in with an OAuth access token. */
+  apiKeyId: string | null;
+  /**
+   * Who the caller is for idempotency keys: the API key, or an OAuth client
+   * and person together. Unlike `apiKeyId` it is never null.
+   */
+  credentialId: string;
   email: string;
   ipAddress: string | null;
   /**
@@ -422,7 +428,7 @@ export async function createEnvelopeForApi(
     );
     await database.query(
       `UPDATE envelopes SET api_key_id = $1, api_metadata = $2 WHERE id = $3`,
-      [actor.apiKeyId, input.metadata ?? null, envelopeId],
+      [actor.credentialId, input.metadata ?? null, envelopeId],
     );
 
     if (input.send) {

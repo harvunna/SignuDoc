@@ -106,6 +106,7 @@ async function createActor(): Promise<ApiActor> {
 
   return {
     apiKeyId: summary.id,
+    credentialId: summary.id,
     email,
     ipAddress: "203.0.113.7",
     name: "Billing App",
@@ -202,7 +203,7 @@ test("one call creates and sends an envelope, with refs, metadata and the key in
   );
 
   assert.deepEqual(sent.rows[0], {
-    apiKeyId: actor.apiKeyId,
+    apiKeyId: actor.credentialId,
     ip: "203.0.113.7",
   });
 
@@ -473,7 +474,7 @@ test("the list pages with a cursor, newest first, and filters by status", async 
 test("an idempotency key replays the first response and refuses a different request", async () => {
   const actor = await createActor();
   const claim = {
-    apiKeyId: actor.apiKeyId,
+    apiKeyId: actor.credentialId,
     key: "order-1042",
     requestHash: "a".repeat(64),
   };
@@ -490,7 +491,7 @@ test("an idempotency key replays the first response and refuses a different requ
 
   await completeIdempotencyKey(
     {
-      apiKeyId: actor.apiKeyId,
+      apiKeyId: actor.credentialId,
       key: "order-1042",
       reservedAt: now,
       response: { id: "env_1" },
@@ -517,7 +518,7 @@ test("an idempotency key replays the first response and refuses a different requ
 
   assert.deepEqual(
     await claimIdempotencyKey(
-      { ...claim, apiKeyId: other.apiKeyId },
+      { ...claim, apiKeyId: other.credentialId },
       database,
       now,
     ),
@@ -539,7 +540,7 @@ test("an idempotency key replays the first response and refuses a different requ
   // Work left over from the old reservation does not touch the new one.
   await completeIdempotencyKey(
     {
-      apiKeyId: actor.apiKeyId,
+      apiKeyId: actor.credentialId,
       key: "order-1042",
       reservedAt: now,
       response: { id: "env_old" },
@@ -584,7 +585,7 @@ test("an idempotency key replays the first response and refuses a different requ
 test("once the envelope is made and sent, a retry is told about it instead of making another", async () => {
   const actor = await createActor();
   const claim = {
-    apiKeyId: actor.apiKeyId,
+    apiKeyId: actor.credentialId,
     key: `order-${randomUUID()}`,
     requestHash: "d".repeat(64),
   };

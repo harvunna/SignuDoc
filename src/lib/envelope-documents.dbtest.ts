@@ -112,6 +112,7 @@ async function createActor(): Promise<ApiActor> {
 
   return {
     apiKeyId: summary.id,
+    credentialId: summary.id,
     email,
     ipAddress: null,
     name: "Docs App",

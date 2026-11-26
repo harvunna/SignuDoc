@@ -79,6 +79,7 @@ test("a client trades its secret for a token that reaches the API as its owner",
     database,
   );
 
+  assert.ok(clientSecret);
   assert.equal(summary.userId, owner.userId);
 
   const client = await authenticateOAuthClient(
@@ -121,6 +122,7 @@ test("a wrong secret, an unknown id and an unverified owner are all turned away"
     { name: "Reports", scope: "read" },
     database,
   );
+  assert.ok(clientSecret);
 
   assert.equal(
     await authenticateOAuthClient(summary.clientId, "gcms_wrong", database),
@@ -149,6 +151,7 @@ test("an expired token is turned away", async () => {
     { name: "Nightly job", scope: "read" },
     database,
   );
+  assert.ok(clientSecret);
   const client = await authenticateOAuthClient(
     summary.clientId,
     clientSecret,
@@ -177,6 +180,7 @@ test("revoking a client ends its tokens at once, and only its owner may", async 
     { name: "Old app", scope: "write" },
     database,
   );
+  assert.ok(clientSecret);
   const client = await authenticateOAuthClient(
     summary.clientId,
     clientSecret,

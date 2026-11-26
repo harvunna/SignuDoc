@@ -11,11 +11,17 @@ release says when it does.
 ### API
 
 - OAuth 2.0 for the API (GCM eSign change). An account registers a client in
-  Settings, My OAuth clients, and the app trades its id and secret at
-  `POST /api/oauth/token` (client credentials grant) for an access token that
-  lasts an hour and is sent as `Authorization: Bearer sdo_…`, alongside
-  `sdk_` API keys. Scopes are `read` and `write`. This release changes the
-  database: run `npm run db:migrate`. See [docs/api.md](docs/api.md).
+  Settings, My OAuth clients. An app acting as its owner trades the client id
+  and secret at `POST /api/oauth/token` (client credentials grant). An app
+  acting for other people sends them to `/oauth/authorize` to allow it
+  (authorization code grant with PKCE, for confidential and public clients),
+  and renews with refresh tokens that rotate on every use. Access tokens last
+  an hour and are sent as `Authorization: Bearer sdo_…`, alongside `sdk_` API
+  keys. Scopes are `read` and `write`. People see and take back the apps
+  they allowed under Settings, Connected apps. Also `POST /api/oauth/revoke`
+  (RFC 7009) and `/.well-known/oauth-authorization-server` (RFC 8414). This
+  release changes the database: run `npm run db:migrate`. See
+  [docs/api.md](docs/api.md).
 
 ## [0.9.0] - 2026-11-22
 

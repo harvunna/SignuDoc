@@ -72,17 +72,23 @@ What to know about keys:
 
 ## OAuth 2.0
 
-An app that would rather fetch short-lived tokens than keep a long-lived key
-can use OAuth 2.0 with the **client credentials** grant
-([RFC 6749, 4.4](https://www.rfc-editor.org/rfc/rfc6749#section-4.4)). Like
-an API key, an OAuth client acts as the person who made it.
+An app can use OAuth 2.0 instead of a long-lived key. Access tokens last an
+hour and are sent exactly like a key: `Authorization: Bearer sdo_…`. Two
+grants are supported, and both start by registering a **client** under
+**Settings, My OAuth clients**: give it a name, choose **Read and write** or
+**Read only**, and copy the client id (`gcmc_…`) and the secret (`gcms_…`).
+The secret is shown only once; GCM eSign keeps only a hash of it.
 
-1. Under **Settings, My OAuth clients**, give the client a name and choose
-   **Read and write** or **Read only**.
-2. Copy the client id (`gcmc_…`) and the client secret (`gcms_…`). The secret
-   is shown only once; GCM eSign keeps only a hash of it.
-3. Trade them for an access token at `POST /api/oauth/token`, with HTTP Basic
-   or with `client_id` and `client_secret` in the form body:
+The install describes itself at `/.well-known/oauth-authorization-server`
+([RFC 8414](https://www.rfc-editor.org/rfc/rfc8414)), so an OAuth library can
+find every address below from the site's address alone.
+
+### An app acting as you: client credentials
+
+For a script or a server that works in your own account.
+([RFC 6749, 4.4](https://www.rfc-editor.org/rfc/rfc6749#section-4.4).) Trade
+the id and secret at `POST /api/oauth/token`, with HTTP Basic or with
+`client_id` and `client_secret` in the form body:
 
 ```sh
 curl https://sign.example.com/api/oauth/token \
@@ -100,37 +106,119 @@ curl https://sign.example.com/api/oauth/token \
 }
 ```
 
-4. Send the access token like a key:
-
 ```sh
 curl https://sign.example.com/api/v1/me \
   -H "Authorization: Bearer sdo_…"
 ```
 
-What to know about OAuth:
+The token acts as the person who made the client, like a key. `scope` is
+optional: left out, the token has the client's own access. `read` or `write`
+asks for that, never more than the client has; `write` includes `read`.
 
-- **`scope` is optional.** Left out, the token has the client's own access.
-  `read` or `write` asks for that, never more than the client has; `write`
-  includes `read`. Anything else is `invalid_scope`.
-- **Tokens last an hour** (`expires_in`). Keep one until it nears its end
-  rather than asking for a new one with every call; a client may ask for 120
-  tokens in ten minutes. Nothing is refreshed: ask again with the secret.
-- **Revoking a client** under My OAuth clients stops its tokens at once. A
-  client also stops when its owner's email is not verified, when an
-  administrator who made it stops being one, or when its owner's account is
-  being closed.
+### An app acting for other people: authorization code
+
+For an app that lets many people use their own GCM eSign accounts, such as a
+web app or a mobile app.
+([RFC 6749, 4.1](https://www.rfc-editor.org/rfc/rfc6749#section-4.1), with
+[PKCE](https://www.rfc-editor.org/rfc/rfc7636).) Add the addresses the app
+returns people to in the client's **Sign-in return addresses** (https; or
+`http://localhost` for development; or an app's own scheme such as
+`com.example.app:/oauth`; at most five). Choose **Public** for an app that
+cannot keep a secret, such as a browser or phone app: it has no secret and
+relies on PKCE alone.
+
+1. **Make a PKCE pair.** A random `code_verifier` of 43 to 128 characters
+   (`A-Z a-z 0-9 - . _ ~`), and its `code_challenge`:
+   `base64url(SHA-256(code_verifier))`, without padding. Only `S256` is
+   accepted, and every request needs one.
+2. **Send the person to the consent screen:**
+
+```
+https://sign.example.com/oauth/authorize
+  ?response_type=code
+  &client_id=gcmc_…
+  &redirect_uri=https://app.example.com/callback
+  &scope=read
+  &state=<random, kept by your app>
+  &code_challenge=<challenge>
+  &code_challenge_method=S256
+```
+
+They sign in if they have not, are shown what the app asks for, and choose
+**Allow** or **Cancel**. They are sent to `redirect_uri` with `?code=…&state=…`
+(or `?error=access_denied&state=…`). Check that `state` is the one you sent.
+Without `scope` the app gets `read`. `redirect_uri` must be one the client
+registered; if it is not, the person sees an error and nobody is redirected.
+
+3. **Trade the code for tokens** within ten minutes. A code works once:
+
+```sh
+curl https://sign.example.com/api/oauth/token \
+  -u "gcmc_…:gcms_…" \
+  -d grant_type=authorization_code \
+  -d code=<code> \
+  -d redirect_uri=https://app.example.com/callback \
+  -d code_verifier=<verifier>
+```
+
+A public client sends `client_id=gcmc_…` in the form instead of HTTP Basic.
+
+```json
+{
+  "access_token": "sdo_…",
+  "expires_in": 3600,
+  "refresh_token": "sdr_…",
+  "scope": "read",
+  "token_type": "Bearer"
+}
+```
+
+The access token acts as **the person who allowed the app**, not as the
+client's owner. It reaches only that person's envelopes and templates.
+
+4. **Renew it** with the refresh token, which lasts 30 days:
+
+```sh
+curl https://sign.example.com/api/oauth/token \
+  -u "gcmc_…:gcms_…" \
+  -d grant_type=refresh_token \
+  -d refresh_token=sdr_…
+```
+
+Each refresh token **works once** and the answer carries a new one, so keep
+the newest. A refresh token used a second time means a copy was taken, and
+the whole sign-in it belongs to ends: the person must allow the app again.
+Asking for a narrower `scope` is allowed, a wider one is `invalid_scope`.
+
+5. **Sign out** by giving a token back at `POST /api/oauth/revoke`
+   ([RFC 7009](https://www.rfc-editor.org/rfc/rfc7009)) with `token=…` and the
+   client's credentials. A refresh token ends its whole sign-in.
+
+People see the apps they allowed under **Settings, Connected apps** and can
+take access back there at any time.
+
+### What to know about OAuth
+
 - **Errors at the token endpoint** are the OAuth ones, not the API's:
-  `{"error": "invalid_client", "error_description": "…"}` with 400 for
-  `invalid_request`, `unsupported_grant_type` and `invalid_scope`, and 401
-  for `invalid_client`. A wrong secret and an unknown id look the same. Too
-  many failed attempts from an address get 429 with `Retry-After`.
-- **The secret stays on your server.** Never put it in a browser or a mobile
-  app. Making and revoking clients is in the site audit trail, like keys.
-- An access token otherwise behaves like a key: the same scopes, the same
-  rate limit across `/api/v1`, and the same `401`, `403` and `429` answers.
-  Each person can have up to 10 clients that have not been revoked.
-- Only this grant is supported. There is no sign-in page for apps that act
-  for other people (authorization code), and no refresh tokens.
+  `{"error": "invalid_grant", "error_description": "…"}`, with 400 for
+  `invalid_request`, `invalid_grant`, `invalid_scope`, `unsupported_grant_type`
+  and `unauthorized_client`, and 401 for `invalid_client`. A wrong secret and
+  an unknown id look the same. Too many failed attempts from an address get
+  429 with `Retry-After`.
+- **Revoking a client** under My OAuth clients stops all its tokens at once.
+  A client or token also stops when its owner's or the person's email is not
+  verified or their account is being closed, and when an administrator who
+  made a client stops being one.
+- **Ask for tokens sparingly.** Keep an access token until it nears its end.
+  A client acting as its owner may ask for 120 tokens in ten minutes; one
+  acting for people, 1,200.
+- **Secrets stay on your server.** Never put a client secret in a browser or
+  a mobile app: use a public client there. Making clients, allowing apps and
+  taking access back are in the site audit trail, like keys.
+- An access token otherwise behaves like a key: the same scopes and the same
+  `401`, `403` and `429` answers. Its rate limit is counted per person, so
+  one busy person does not use up the allowance of the others.
+- Each person can have up to 10 clients that have not been revoked.
 
 ## Errors
 
