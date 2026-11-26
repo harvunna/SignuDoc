@@ -20,7 +20,7 @@ type InPersonSigningRouteContext = {
 
 const noStore = { "cache-control": "private, no-store" };
 
-// Signly: the sender opens an in-person signing session for a signer whose
+// GCM eSign: the sender opens an in-person signing session for a signer whose
 // turn it is, to hand their device to that signer. Answers with the signing
 // page to open.
 export async function POST(

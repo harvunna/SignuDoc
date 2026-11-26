@@ -49,7 +49,7 @@ type SignerChecks = {
   wantsAccessCode: boolean;
   /** Part 11 mode: what this signature means (21 CFR 11.50). */
   signatureMeaning: SignatureMeaning | null;
-  /** Signly: signs on the sender's device; no invitation is emailed. */
+  /** GCM eSign: signs on the sender's device; no invitation is emailed. */
   inPerson: boolean;
 };
 

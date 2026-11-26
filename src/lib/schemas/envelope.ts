@@ -139,7 +139,7 @@ export type EnvelopeSignatureLevel = z.infer<typeof signatureLevelSchema>;
 
 /**
  * One of the files an envelope was made from, when the sender uploaded more
- * than one (Signly). The files are joined into the envelope's one source
+ * than one (GCM eSign). The files are joined into the envelope's one source
  * PDF; this says which pages of it each one became. See
  * envelope-documents.ts.
  */

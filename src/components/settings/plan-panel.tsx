@@ -1,6 +1,6 @@
 import { describeEnvelopeUsage, type PlanUsage } from "@/lib/plan";
 
-// Signly plans: the Plan section of Settings, for administrators. Shows the
+// GCM eSign plans: the Plan section of Settings, for administrators. Shows the
 // plan this site is on, how much of it this month has used, and where to
 // change it. The plan itself is set by GCM's control panel (src/lib/plan.ts),
 // so there is nothing to edit here.

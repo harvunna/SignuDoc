@@ -10,7 +10,7 @@ import {
 } from "../types/domain.ts";
 import { DocumentImportError, importPdfDocument } from "./document-import.ts";
 
-// Signly: joining several uploaded PDFs into the one source PDF of an
+// GCM eSign: joining several uploaded PDFs into the one source PDF of an
 // envelope.
 //
 // Each file is checked on its own first, exactly as a single upload is

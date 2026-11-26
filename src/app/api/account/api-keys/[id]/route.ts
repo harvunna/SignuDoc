@@ -16,7 +16,7 @@ type ApiKeyRouteContext = {
 };
 
 // Revokes one of the signed-in account's own API keys. It stops working at
-// once and cannot be turned back on. (Signly change.)
+// once and cannot be turned back on. (GCM eSign change.)
 export async function DELETE(request: Request, context: ApiKeyRouteContext) {
   const sessionResult = await requireVerifiedSenderSession(request);
 

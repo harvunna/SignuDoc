@@ -217,15 +217,15 @@ type EnteredValues = {
   checkboxValues: Record<string, boolean>;
   signatureValues: Record<string, SignatureEntry>;
   /**
-   * Text, number and dropdown fields, and (Signly) the name of the file
+   * Text, number and dropdown fields, and (GCM eSign) the name of the file
    * attached in an attachment field.
    */
   textValues: Record<string, string>;
-  /** Signly: the upload each attachment field uses. */
+  /** GCM eSign: the upload each attachment field uses. */
   attachmentUploadIds?: Record<string, string>;
 };
 
-/** Signly: the largest file a signer can attach, as the server allows. */
+/** GCM eSign: the largest file a signer can attach, as the server allows. */
 const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024;
 const ATTACHMENT_ACCEPT = "application/pdf,image/png,image/jpeg";
 
@@ -421,7 +421,7 @@ function getVisibleFieldValue(field: SigningVisibleField) {
     return field.checked ? "Checked" : "Unchecked";
   }
 
-  // Signly: another signer's file is the sender's to see, not its name.
+  // GCM eSign: another signer's file is the sender's to see, not its name.
   if (field.type === "attachment") {
     return "File attached";
   }
@@ -592,7 +592,7 @@ export function SigningLiveShell({
     useState<SignatureModalState | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [textValues, setTextValues] = useState<Record<string, string>>({});
-  // Signly: the upload each attachment field uses, and the ones on their way.
+  // GCM eSign: the upload each attachment field uses, and the ones on their way.
   const [attachmentUploadIds, setAttachmentUploadIds] = useState<
     Record<string, string>
   >({});
@@ -622,7 +622,7 @@ export function SigningLiveShell({
   const activePageRecord =
     record.pages.find((page) => page.pageNumber === activePage) ??
     record.pages[0];
-  // Signly: an envelope of several documents names the one on screen and
+  // GCM eSign: an envelope of several documents names the one on screen and
   // lets the signer jump between them. Empty for one document.
   const documents =
     record.documents && record.documents.length > 1 ? record.documents : [];
@@ -641,7 +641,7 @@ export function SigningLiveShell({
     textValues,
   };
 
-  // Signly: sends a file for an attachment field as soon as it is chosen,
+  // GCM eSign: sends a file for an attachment field as soon as it is chosen,
   // so finishing only names it. Choosing another file replaces it.
   async function handleAttachmentSelect(
     field: SigningCurrentField,
@@ -1900,10 +1900,10 @@ function CurrentSignerField({
   field: SigningCurrentField;
   /** True for a number field holding something that is not a number. */
   isInvalid: boolean;
-  /** Signly: an attachment field's file is on its way. */
+  /** GCM eSign: an attachment field's file is on its way. */
   isUploading?: boolean;
   localDateLabel: string;
-  /** Signly: the signer chose a file for an attachment field. */
+  /** GCM eSign: the signer chose a file for an attachment field. */
   onAttachmentSelect?: (file: File) => void;
   onCheckboxChange: (checked: boolean) => void;
   onSignatureClick: () => void;
@@ -2072,7 +2072,7 @@ function CurrentSignerField({
     );
   }
 
-  // Signly: the signer chooses a file; its name shows once it is attached.
+  // GCM eSign: the signer chooses a file; its name shows once it is attached.
   if (field.type === "attachment") {
     return (
       <label

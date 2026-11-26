@@ -8,7 +8,7 @@ import {
 import { EnvelopeMutationError } from "./envelopes.ts";
 import { issueSigningLink } from "./services/signing-links.ts";
 
-// Signly: in-person signing. A sender marks a signer "in person" before
+// GCM eSign: in-person signing. A sender marks a signer "in person" before
 // sending; that signer is never emailed a link. When it is their turn the
 // sender opens a session on their own device and hands it to the signer,
 // who signs on the ordinary signing page, with every check it makes

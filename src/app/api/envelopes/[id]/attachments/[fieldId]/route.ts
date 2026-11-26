@@ -21,7 +21,7 @@ type EnvelopeAttachmentRouteContext = {
 
 const noStore = { "cache-control": "private, no-store" };
 
-// Signly: a file a signer attached, for whoever may see the envelope (its
+// GCM eSign: a file a signer attached, for whoever may see the envelope (its
 // sender, or once sent a teammate or an administrator, as for its other
 // files).
 export async function GET(

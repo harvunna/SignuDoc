@@ -89,7 +89,7 @@ export const apiSendOptionsSchema = z.object({
 const apiSignerSchema = z.object({
   accessCode: z.string().trim().min(4).max(64).optional(),
   email: emailSchema,
-  // Signly: signs on the sender's device; no invitation is emailed.
+  // GCM eSign: signs on the sender's device; no invitation is emailed.
   inPerson: z.boolean().optional(),
   name: nameSchema,
   ref: refSchema,
@@ -101,7 +101,7 @@ const apiSignerSchema = z.object({
   step: z.number().int().positive().max(MAX_SIGNERS_CEILING).optional(),
 });
 
-// Signly: where a field goes by the words next to it, for a document with
+// GCM eSign: where a field goes by the words next to it, for a document with
 // no coordinates to give. See src/lib/api/text-tags.ts.
 const apiAnchorSchema = z.object({
   occurrence: z.number().int().positive().max(100).optional(),
@@ -113,10 +113,10 @@ const apiAnchorSchema = z.object({
 
 const apiFieldSchema = z
   .object({
-    /** Signly: find the place by the text next to it instead of x and y. */
+    /** GCM eSign: find the place by the text next to it instead of x and y. */
     anchor: apiAnchorSchema.optional(),
     /**
-     * Signly: which document (1-based, in upload order) `page` counts in.
+     * GCM eSign: which document (1-based, in upload order) `page` counts in.
      * Left out, `page` counts across all the documents together.
      */
     document: z
@@ -159,7 +159,7 @@ export const apiCreateEnvelopeSchema = z
       .array(z.object({ email: emailSchema, name: nameSchema }))
       .max(MAX_COPY_RECIPIENTS_PER_ENVELOPE)
       .optional(),
-    // Signly: may be empty when textTags is true and the documents carry
+    // GCM eSign: may be empty when textTags is true and the documents carry
     // [[type:signer]] tags.
     fields: z.array(apiFieldSchema).max(MAX_API_FIELDS),
     metadata: metadataSchema.optional(),
@@ -228,7 +228,7 @@ export type ApiActor = {
   email: string;
   ipAddress: string | null;
   /**
-   * Whether the key's owner is an administrator. Signly lets anyone have a
+   * Whether the key's owner is an administrator. GCM eSign lets anyone have a
    * key, so routes that reach the whole install check this.
    */
   isAdmin?: boolean;
@@ -283,7 +283,7 @@ export async function sendEnvelopeForApi(
 export async function createEnvelopeForApi(
   actor: ApiActor,
   input: ApiCreateEnvelopeInput,
-  /** Signly: one PDF, or several to be joined in this order. */
+  /** GCM eSign: one PDF, or several to be joined in this order. */
   sourcePdf: SourcePdfInput | readonly SourcePdfInput[],
   database: DbPool = getDb(),
   options: {
@@ -291,7 +291,7 @@ export async function createEnvelopeForApi(
     onCreated?: (envelopeId: string) => Promise<void>;
   } = {},
 ): Promise<ApiEnvelope> {
-  // Signly: tags and anchors become ordinary fields first, and the tags are
+  // GCM eSign: tags and anchors become ordinary fields first, and the tags are
   // covered in the PDFs that are kept.
   let sourcePdfs = sourcePdf;
   let requestedFields: ReadonlyArray<ResolvedField> =

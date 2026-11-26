@@ -78,7 +78,7 @@ type EnvelopeDetailSigner = {
   metaLabel: string;
   name: string;
   order: number;
-  /** Signly: signs on the sender's device; never emailed a link. */
+  /** GCM eSign: signs on the sender's device; never emailed a link. */
   inPerson?: boolean;
   /** An approver's "signed" is shown as approved, "declined" as rejected. */
   role?: "approver" | "signer";
@@ -344,7 +344,7 @@ export function EnvelopeDetailShell({
     }
   }
 
-  // Signly: opens an in-person signing session on this device, for the
+  // GCM eSign: opens an in-person signing session on this device, for the
   // sender to hand to the signer. The signing page replaces this one.
   async function handleStartInPersonSigning(signer: EnvelopeDetailSigner) {
     if (

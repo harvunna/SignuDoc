@@ -107,7 +107,7 @@ export async function POST(request: Request) {
         })
           .formData()
           .catch(() => null);
-        // Signly: every "file" part is a document, in the order sent. They
+        // GCM eSign: every "file" part is a document, in the order sent. They
         // are joined into the envelope's one PDF.
         const files = form?.getAll("file") ?? [];
         const json = form?.get("data");
@@ -281,7 +281,7 @@ export async function POST(request: Request) {
 
 /**
  * The pending uploads a JSON create names: `uploadId` (and `filename`) for
- * one PDF, or (Signly) `uploads: [{ uploadId, filename }]` for several, in
+ * one PDF, or (GCM eSign) `uploads: [{ uploadId, filename }]` for several, in
  * order. Returns what is wrong as a message instead.
  */
 function readUploadReferences(

@@ -7,10 +7,10 @@ import type { ApiKeySummary } from "@/lib/api-keys";
 // API keys for the public API (/api/v1). A new key is shown once, right
 // after it is made, and never again. Administrators manage every key on
 // the install from Organization settings; anyone else manages their own
-// from their Settings (Signly change: SignuDoc has only the first).
+// from their Settings (GCM eSign change: SignuDoc has only the first).
 
 const GENERIC_ERROR_MESSAGE = "Something went wrong. Please try again.";
-// The install's own API reference (Swagger), a Signly addition.
+// The install's own API reference (Swagger), a GCM eSign addition.
 const API_DOCS_URL = "/api/v1";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {

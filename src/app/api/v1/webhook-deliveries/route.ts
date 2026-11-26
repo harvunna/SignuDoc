@@ -35,7 +35,7 @@ export async function GET(request: Request) {
     "api_webhook_deliveries_failure",
     async ({ actor }) => {
       // Deliveries carry events for every envelope on the install, so only
-      // an administrator's key may read them. (Signly change: any account
+      // an administrator's key may read them. (GCM eSign change: any account
       // can have a key here.)
       if (actor.isAdmin !== true) {
         return apiError(

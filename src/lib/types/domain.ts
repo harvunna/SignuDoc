@@ -14,7 +14,7 @@ export const MAX_UPLOAD_SIZE_BYTES = 20 * 1024 * 1024;
 // and is drawn again when the envelope is finished, so there is a limit.
 export const MAX_PDF_PAGES = 1000;
 /**
- * Signly: how many PDFs one envelope may be made of. Together they are held
+ * GCM eSign: how many PDFs one envelope may be made of. Together they are held
  * to MAX_UPLOAD_SIZE_BYTES and MAX_PDF_PAGES, the same as one file, because
  * they are joined into one PDF and everything after that is unchanged.
  */

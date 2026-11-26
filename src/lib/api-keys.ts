@@ -18,7 +18,7 @@ import { recordSystemAuditEvent } from "./services/system-audit.ts";
 // API keys for the public API. Anyone with an account creates one in
 // Settings, sees it once, and from then on it acts as them: it reaches
 // their own envelopes and templates. Administrators see and can revoke
-// every key. (Signly change: SignuDoc lets only administrators have keys.)
+// every key. (GCM eSign change: SignuDoc lets only administrators have keys.)
 // Only a hash of the key is stored. See db/migrations/20261118090000_api_keys.sql.
 
 export const API_KEY_PREFIX = "sdk_";
@@ -497,7 +497,7 @@ export async function revokeApiKeysForUser(
 /**
  * The account a presented key acts as, or null if the key is unknown,
  * revoked, expired, or belongs to someone whose email is not verified or
- * who is closing their account. (Signly change: SignuDoc also turns away
+ * who is closing their account. (GCM eSign change: SignuDoc also turns away
  * keys whose owner is not an administrator.) Every one of those looks the
  * same to the caller.
  */

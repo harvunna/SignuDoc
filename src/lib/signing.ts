@@ -158,7 +158,7 @@ type FieldPersistenceUpdate = {
 
 type SigningEnvelopeRow = {
   completedAt: number | null;
-  /** Signly: see envelope-documents.ts. */
+  /** GCM eSign: see envelope-documents.ts. */
   documents?: unknown;
   createdAt: number;
   declinedAt: number | null;
@@ -206,7 +206,7 @@ type SigningSignerRow = {
   userId: string | null;
   turnStartedAt: number | null;
   updatedAt: number;
-  // Signly: signs on the sender's device (see in-person-signing.ts).
+  // GCM eSign: signs on the sender's device (see in-person-signing.ts).
   inPerson: boolean;
   inPersonHostEmail: string | null;
   inPersonHostedAt: number | null;
@@ -1086,9 +1086,9 @@ function buildSignedAuditEvent(input: {
   signer: ReturnType<typeof signerRecordSchema.parse>;
   submittedAt: number;
   timezoneOffsetMinutes: number;
-  /** Signly: the files the signer attached, as stored. */
+  /** GCM eSign: the files the signer attached, as stored. */
   attachments?: readonly SignedAttachmentEvidence[];
-  /** Signly: signed on the sender's device, in an in-person session. */
+  /** GCM eSign: signed on the sender's device, in an in-person session. */
   inPerson?: { hostEmail: string | null; hostedAt: number | null } | null;
 }): AuditEventRecord {
   // An approver's decision is its own event, never "signed": the audit
@@ -1127,7 +1127,7 @@ function buildSignedAuditEvent(input: {
   };
 }
 
-/** Signly: what the signed audit event records of each attached file. */
+/** GCM eSign: what the signed audit event records of each attached file. */
 type SignedAttachmentEvidence = {
   contentType: string;
   fieldId: string;
@@ -1849,7 +1849,7 @@ export async function checkSigningFieldFit(
 }
 
 /**
- * Signly: the attachment field a signer is uploading a file for, after the
+ * GCM eSign: the attachment field a signer is uploading a file for, after the
  * same checks as signing itself: a live link whose turn it is, the extra
  * checks passed, and agreement to use electronic records. See
  * signer-attachments.ts.
@@ -2238,7 +2238,7 @@ export async function getSigningPayloadForToken(
         checked: field.checked ?? null,
         height: field.height,
         id: field.id,
-        // Signly: an attachment's stored file is the signer's upload, not a
+        // GCM eSign: an attachment's stored file is the signer's upload, not a
         // picture to show; only its name is shown.
         imageDataUrl:
           field.imageKey && field.type !== "attachment"
@@ -2252,7 +2252,7 @@ export async function getSigningPayloadForToken(
         signerName: signerNamesById.get(field.signerId) ?? "Signed field",
         submittedAt: field.submittedAt!,
         type: field.type,
-        // Signly: an earlier signer's attached file is for the sender; its
+        // GCM eSign: an earlier signer's attached file is for the sender; its
         // name is not shown to the next signers.
         value: field.type === "attachment" ? null : (field.value ?? null),
         width: field.width,
@@ -2506,7 +2506,7 @@ async function assertStillSignersTurn(
 type SigningContext = Awaited<ReturnType<typeof resolveSigningContext>>;
 
 /**
- * Signly: once a signer has signed, the files they uploaded and did not
+ * GCM eSign: once a signer has signed, the files they uploaded and did not
  * use go. The signature is saved by then, so a failure here only leaves
  * the files queued for the daily cleanup.
  */
@@ -2570,7 +2570,7 @@ function buildSignerSubmission(
   context: SigningContext,
   parsedInput: SigningSubmission,
   submittedAt: number,
-  // Signly: the files this signer has uploaded, by upload id.
+  // GCM eSign: the files this signer has uploaded, by upload id.
   attachmentUploads: ReadonlyMap<string, SignerAttachmentUpload> = new Map(),
 ) {
   const currentSignerId = context.signer.id;
@@ -2657,7 +2657,7 @@ function buildSignerSubmission(
   for (const field of currentSignerFields) {
     const submission = relevantSubmissions.get(field.id);
 
-    // Signly: the file the signer uploaded for this field. The field names
+    // GCM eSign: the file the signer uploaded for this field. The field names
     // the stored file and keeps its name as the value; the file itself is
     // never put on the document.
     if (field.type === "attachment") {
@@ -3141,7 +3141,7 @@ async function submitSigningOnce(
           signerId: currentSignerId,
           tokenHash: presentedTokenHash,
         });
-        // Signly: the attached files are still the ones read above.
+        // GCM eSign: the attached files are still the ones read above.
         await assertSignerAttachmentUploadsKept(
           tx,
           currentSignerId,
@@ -3313,7 +3313,7 @@ async function submitSigningOnce(
       // Nobody to invite while others in this step are still signing. In
       // an embedded envelope nobody is emailed: the app starts the next
       // step's turns, and the signer.signed webhook shows who is next.
-      // Signly: nor is a signer who signs in person; the sender opens
+      // GCM eSign: nor is a signer who signs in person; the sender opens
       // their session from the envelope's page.
       const inPersonSignerIds = new Set(
         context.signers
@@ -3423,7 +3423,7 @@ async function submitSigningOnce(
           signerId: currentSignerId,
           tokenHash: presentedTokenHash,
         });
-        // Signly: the attached files are still the ones read above.
+        // GCM eSign: the attached files are still the ones read above.
         await assertSignerAttachmentUploadsKept(
           tx,
           currentSignerId,

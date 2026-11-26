@@ -6,7 +6,7 @@ import {
   publicSiteOrigin,
 } from "@/lib/public-site";
 
-// Signly: customer sites are kept out of search engines; the public site
+// GCM eSign: customer sites are kept out of search engines; the public site
 // is open except for the app's own pages.
 export default function robots(): MetadataRoute.Robots {
   if (!isPublicSite()) {

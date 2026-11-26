@@ -4,11 +4,11 @@ import { isControlPanelRequest, readUsageReport } from "@/lib/plan";
 import { logRouteError } from "@/lib/security/logging";
 import { getClientIpAddress, getRequestPathname } from "@/lib/security/request";
 
-// Signly plans: the usage report GCM's control panel reads for each
+// GCM eSign plans: the usage report GCM's control panel reads for each
 // customer site (src/lib/plan.ts): the plan, whether the site is paused,
 // envelopes sent this month, accounts, and a few other counts.
 //
-// The control panel sends SIGNLY_CONTROL_SECRET as a bearer token, the way
+// The control panel sends GCMESIGN_CONTROL_SECRET as a bearer token, the way
 // Vercel sends CRON_SECRET to the daily jobs. Unlike those jobs, this route
 // is never open: with no secret set, every caller is refused.
 

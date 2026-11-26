@@ -11,7 +11,7 @@ import {
   detectSignerAttachmentType,
 } from "./signer-attachments.ts";
 
-// Signly: what a signer may attach, and how its name is kept.
+// GCM eSign: what a signer may attach, and how its name is kept.
 
 test("the type of an attached file comes from its bytes", () => {
   const bytes = (...values: number[]) => new Uint8Array(values);

@@ -1,6 +1,6 @@
-# Signly customizations
+# GCM eSign customizations
 
-Signly (https://signly.globalcomputingmachines.com) is Global Computing
+GCM eSign (https://esign.globalcomputingmachines.com, formerly Signly) is Global Computing
 Machines' copy of [SignuDoc](https://github.com/NYLLON-SOFTWARE/SignuDoc)
 (MIT licence, Copyright (c) 2026 Nyllon Software). Keep `LICENSE` and
 `LICENSES/` as they are: the MIT licence requires the copyright notice to stay
@@ -29,7 +29,7 @@ SignuDoc can be checked against them. Re-check each item after an update.
 
 ## If an update clashes with a change below
 
-Take SignuDoc's new version of the file, then apply the Signly change again.
+Take SignuDoc's new version of the file, then apply the GCM eSign change again.
 All changes here are small and text-only, except the Swagger page.
 
 ## The changes
@@ -74,14 +74,18 @@ two-step sign-in keys, sessions and integrations.
 - The default brand color is GCM navy `#1e3a8a` (`DEFAULT_BRAND_COLOR` and
   `DEFAULT_BRAND_PALETTE` in `src/lib/brand-color.ts`, the accent variables in
   `src/app/globals.css`, and `src/app/icon.svg`). Keep the three in step.
-- Not renamed on purpose: the "Signly:" markers in code comments and test
-  names. They only mark code added in this fork and are never shown.
+- The product was called Signly first. Code comments and test names that
+  mark this fork's changes now say "GCM eSign:". The settings are
+  `GCMESIGN_*` (plan limits, control secret, public site); the old
+  `SIGNLY_*` names still work when the new one is not set
+  (`readSiteEnv` in `src/lib/utils/env.ts`). The Vercel project is still
+  named `signly` (a dashboard label only).
 - Not changed: the "SignuDoc" section of Settings (version and updates),
   shown to administrators only.
 
 ### 3. API keys for everyone, not only administrators
 
-SignuDoc lets only administrators have API keys. In Signly anyone with an
+SignuDoc lets only administrators have API keys. In GCM eSign anyone with an
 account makes keys for themselves, and a key reaches only its owner's own
 envelopes and templates (those queries were already per user).
 
@@ -145,7 +149,7 @@ envelopes waiting longest, with links. Downloadable as CSV.
 
 ### 5. Several documents in one envelope
 
-SignuDoc allows one PDF per envelope. Signly lets the sender upload up to 10
+SignuDoc allows one PDF per envelope. GCM eSign lets the sender upload up to 10
 PDFs (20 MB and 1000 pages in total), put them in order and remove them
 before continuing. When the draft is made, the files are joined into the
 envelope's one source PDF, and a list of the original files (name, first
@@ -200,12 +204,12 @@ uploaded files; none of these is used by signing.
 
 ### 6. Plan limits and paused sites
 
-Signly is sold as one site per customer, set up by GCM's control panel. The
+GCM eSign is sold as one site per customer, set up by GCM's control panel. The
 plan reaches the site as environment variables, all optional: unset means
 no limit and an active site, so GCM's own site behaves as before.
-`SIGNLY_PLAN_NAME`, `SIGNLY_MAX_ENVELOPES_PER_MONTH` (UTC calendar month,
-every way of sending), `SIGNLY_MAX_USERS`, `SIGNLY_SITE_STATUS`
-(`active` or `paused`), `SIGNLY_BILLING_URL`, and `SIGNLY_CONTROL_SECRET`
+`GCMESIGN_PLAN_NAME`, `GCMESIGN_MAX_ENVELOPES_PER_MONTH` (UTC calendar month,
+every way of sending), `GCMESIGN_MAX_USERS`, `GCMESIGN_SITE_STATUS`
+(`active` or `paused`), `GCMESIGN_BILLING_URL`, and `GCMESIGN_CONTROL_SECRET`
 for the usage report.
 
 - New `src/lib/plan.ts`: reads the plan; the paused and monthly-limit checks;
@@ -226,7 +230,7 @@ for the usage report.
   `site_paused` and `plan_limit_reached` (402); a 402 does not keep the
   `Idempotency-Key`. `src/lib/api/openapi.ts` and `docs/api.md` document them.
 - `src/lib/settings.ts` (`evaluateSignupRequest`): refuses a new account
-  (`signup_user_limit`) once the site has `SIGNLY_MAX_USERS` accounts, for
+  (`signup_user_limit`) once the site has `GCMESIGN_MAX_USERS` accounts, for
   password sign-up and single sign-on alike.
   `src/components/auth/signup-shell.tsx` and `sso-button.tsx` show it.
 - `src/components/layout/app-shell.tsx`, `src/app/(app)/layout.tsx`: a
@@ -235,7 +239,7 @@ for the usage report.
   `src/app/(app)/settings/page.tsx` to administrators when a plan is set:
   plan name, "23 of 100 envelopes this month", accounts, upgrade link.
 - New `src/app/api/internal/usage/route.ts`: `GET` usage report (JSON) for
-  the control panel, bearer `SIGNLY_CONTROL_SECRET`; refuses everyone (401)
+  the control panel, bearer `GCMESIGN_CONTROL_SECRET`; refuses everyone (401)
   when the secret is unset.
 - `.env.example`: the new variables.
 - Tests: `src/lib/plan.test.ts`, `src/lib/plan.dbtest.ts` (web, API,
@@ -306,7 +310,7 @@ for the usage report.
     untouched.
 - **Signer correction.** SignuDoc already corrects a waiting signer
   (migration `20261116100000_signer_corrected.sql`,
-  `correctSentEnvelopeSigner`). Signly adds:
+  `correctSentEnvelopeSigner`). GCM eSign adds:
   `PATCH /api/v1/envelopes/{id}/signers/{signerId}` (same function, same
   `signer_corrected` event); an in-person signer's link is replaced with no
   email; a corrected signer's uploaded attachments are discarded.
@@ -316,7 +320,7 @@ for the usage report.
 
 ### 8. Public site and search engines
 
-- Setting `SIGNLY_PUBLIC_SITE=true` turns on a marketing site on that one
+- Setting `GCMESIGN_PUBLIC_SITE=true` turns on a marketing site on that one
   install: a home page for visitors who are not signed in (`/`), and
   `/docusign-alternative`, `/esign-api` and `/security`. Without the setting
   those three answer 404 and `/` redirects to sign-in as before.
@@ -352,18 +356,19 @@ repository. Recreate them if the install is ever rebuilt.
 
 - Vercel project `signly` (team gcm23): Neon database, Resend integration,
   private Blob store `signly-blob` (`BLOB_READ_WRITE_TOKEN`), domain
-  `signly.globalcomputingmachines.com`.
+  `esign.globalcomputingmachines.com` (the older `signly.` and `singly.`
+  addresses are 308 redirects to it).
 - Resend domain `globalcomputingmachines.com`; DNS records `send`, `rsend`,
   `resend._domainkey` and `_dmarc` in Cloudflare.
-- App: Organization name "Signly", send-from
+- App: Organization name "GCM eSign", send-from
   `singly-notifications@globalcomputingmachines.com`, sign-up "People at my organization",
-  two-step sign-in required, API key "Signly", one webhook endpoint. Sign-up domain globalcomputingmachines.com. Administrators: harvunna@gmail.com and harikrishna.vunnam@globalcomputingmachines.com. The old misspelled domain singly.globalcomputingmachines.com stays on the Vercel project as a 308 redirect to signly, and the Production variable APP_URL is set to https://signly.globalcomputingmachines.com so links and emails use the new address.
+  two-step sign-in required, API key "GCM eSign", one webhook endpoint. Sign-up domain globalcomputingmachines.com. Administrators: harvunna@gmail.com and harikrishna.vunnam@globalcomputingmachines.com. The old misspelled domain singly.globalcomputingmachines.com is a 308 redirect to esign, and the Production variable APP_URL is set to https://esign.globalcomputingmachines.com so links and emails use the new address.
 
 ## Update check checklist (on the pull request's preview)
 
 - [ ] Sign in works.
-- [ ] Header and page titles say Signly; no "Powered by SignuDoc" in the footer.
-- [ ] `/api/v1` shows the Swagger page titled "Signly API".
+- [ ] Header and page titles say GCM eSign; no "Powered by SignuDoc" in the footer.
+- [ ] `/api/v1` shows the Swagger page titled "GCM eSign API".
 - [ ] `/api/v1/envelopes` without a key answers 401 `unauthorized`.
 - [ ] A non-admin account sees "My API keys" in Settings; its key works in
       Swagger for `/me` and `/envelopes`, and gets 403 on `/webhook-deliveries`.
@@ -380,12 +385,12 @@ repository. Recreate them if the install is ever rebuilt.
       certificate lists every document with its pages. A template saved from
       it says "N documents".
 
-- [ ] Plan limits: with `SIGNLY_MAX_ENVELOPES_PER_MONTH` set to the sends
+- [ ] Plan limits: with `GCMESIGN_MAX_ENVELOPES_PER_MONTH` set to the sends
       so far plus one on the preview, one send works and the next is refused
       (402 `plan_limit_reached` from the API); Settings shows "N of M
-      envelopes this month". With `SIGNLY_SITE_STATUS=paused` the banner shows
+      envelopes this month". With `GCMESIGN_SITE_STATUS=paused` the banner shows
       and sending is refused (`site_paused`). `GET /api/internal/usage` with
-      `Authorization: Bearer $SIGNLY_CONTROL_SECRET` returns JSON, 401 without.
+      `Authorization: Bearer $GCMESIGN_CONTROL_SECRET` returns JSON, 401 without.
 
 - [ ] Signer tools: place an Attachment field and tick "Signs in person" for
       a second signer; the first signer attaches a PDF and signs; the
@@ -393,7 +398,7 @@ repository. Recreate them if the install is ever rebuilt.
       "Sign in person" opens the signing page for the second signer; the
       certificate lists the file and "signed in person".
 
-- [ ] Public site (only where `SIGNLY_PUBLIC_SITE=true`): `/` signed out shows
+- [ ] Public site (only where `GCMESIGN_PUBLIC_SITE=true`): `/` signed out shows
       the home page, signed in goes to the dashboard; `/robots.txt` lists the
       sitemap; `/sitemap.xml` lists four pages; the three landing pages open.
       Where it is not set: those pages answer 404 and robots disallows all.

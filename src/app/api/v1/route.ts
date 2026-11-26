@@ -19,16 +19,16 @@ const html = `<!doctype html>
     <style>
       body { margin: 0; background: #fafafa; }
       .topbar { display: none; }
-      .signly-header {
+      .esign-header {
         font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
         background: #4f46e5; color: #fff; padding: 14px 24px;
         font-size: 18px; font-weight: 600;
       }
-      .signly-header span { font-weight: 400; opacity: 0.85; font-size: 14px; margin-left: 8px; }
+      .esign-header span { font-weight: 400; opacity: 0.85; font-size: 14px; margin-left: 8px; }
     </style>
   </head>
   <body>
-    <div class="signly-header">GCM eSign API <span>v1 &middot; Authorize with your sdk_ API key</span></div>
+    <div class="esign-header">GCM eSign API <span>v1 &middot; Authorize with your sdk_ API key</span></div>
     <div id="swagger-ui"></div>
     <script src="/swagger-ui/swagger-ui-bundle.js"></script>
     <script>

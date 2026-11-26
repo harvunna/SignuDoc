@@ -2,7 +2,7 @@ import { degrees, PDFDocument, rgb } from "pdf-lib";
 
 import { fieldTypes } from "../types/domain.ts";
 
-// Signly: fields placed by text instead of by coordinates.
+// GCM eSign: fields placed by text instead of by coordinates.
 //
 // Two ways, both read from the uploaded PDFs before the envelope is made:
 //

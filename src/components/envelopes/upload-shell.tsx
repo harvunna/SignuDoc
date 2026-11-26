@@ -37,7 +37,7 @@ import { type CreateEnvelopeResponse } from "@/lib/schemas/envelope";
 
 const envelopeSteps = ["Upload", "Signers", "Place fields", "Review"];
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024;
-// Signly: an envelope may hold several PDFs. Together they keep to the
+// GCM eSign: an envelope may hold several PDFs. Together they keep to the
 // same 20 MB as one, because the server joins them into one PDF.
 const MAX_DOCUMENTS = 10;
 

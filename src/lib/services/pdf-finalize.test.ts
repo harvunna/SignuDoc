@@ -1083,7 +1083,7 @@ test("the new wording leaves the audit fingerprint of a captured email unchanged
   );
 });
 
-test("Signly: the certificate lists each document of an envelope of several", async () => {
+test("GCM eSign: the certificate lists each document of an envelope of several", async () => {
   const fixture = await makeFixture();
   const pdfBytes = await renderEnvelopeCertificatePdf(
     {
@@ -1121,7 +1121,7 @@ test("Signly: the certificate lists each document of an envelope of several", as
   assert.ok(text.includes("Combined source PDF: umowa.pdf"));
 });
 
-test("Signly: an envelope of one document keeps the Source PDF line", async () => {
+test("GCM eSign: an envelope of one document keeps the Source PDF line", async () => {
   const fixture = await makeFixture();
   const text = (
     await extractText(

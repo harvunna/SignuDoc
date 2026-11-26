@@ -36,7 +36,7 @@ type EnvelopeRow = {
   completedAt: number | null;
   createdAt: number;
   declinedAt: number | null;
-  /** Signly: printed on the certificate. See envelope-documents.ts. */
+  /** GCM eSign: printed on the certificate. See envelope-documents.ts. */
   documents?: unknown;
   evidenceKey: string | null;
   id: string;

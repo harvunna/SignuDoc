@@ -178,7 +178,7 @@ export function getRecipientCertificateKey(evidenceKey: string): string {
 }
 
 /**
- * Signly: a file a signer uploaded for an attachment field, under a key of
+ * GCM eSign: a file a signer uploaded for an attachment field, under a key of
  * its own for each upload, so a replaced upload can be deleted without
  * touching the one that replaced it. It sits beside the original, for the
  * same reason as the thumbnail.

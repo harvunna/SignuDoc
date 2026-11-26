@@ -73,7 +73,7 @@ export const signingPayloadSchema = z.object({
   /** Checks, as the signer types, that an answer fits its box. */
   fieldFitUrl: z.string().trim().min(1),
   /**
-   * Signly: where the signer uploads a file for an attachment field (with
+   * GCM eSign: where the signer uploads a file for an attachment field (with
    * ?fieldId=). Absent when they have no attachment field.
    */
   attachmentUploadUrl: z.string().trim().min(1).optional(),
@@ -83,7 +83,7 @@ export const signingPayloadSchema = z.object({
   pageCount: z.number().int().positive(),
   pages: z.array(envelopePageSchema),
   /**
-   * Signly: the documents of the envelope, in order, by name and pages of
+   * GCM eSign: the documents of the envelope, in order, by name and pages of
    * the joined PDF. More than one only when the sender uploaded several.
    */
   documents: z

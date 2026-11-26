@@ -26,7 +26,7 @@ const noStore = { "cache-control": "private, no-store" };
 // The signed-in account's own API keys for the public API. Any account may
 // have them; each key reaches only its owner's envelopes and templates.
 // The key itself is in the response to the request that creates it, and
-// nowhere else, ever. (Signly change: SignuDoc has only the administrator
+// nowhere else, ever. (GCM eSign change: SignuDoc has only the administrator
 // routes in /api/admin/api-keys.)
 
 export async function GET(request: Request) {

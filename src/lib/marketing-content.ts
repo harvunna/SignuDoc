@@ -1,4 +1,4 @@
-// Signly: the words on the public pages. Everything said here is something
+// GCM eSign: the words on the public pages. Everything said here is something
 // the product does today; do not add a claim the code cannot back up.
 
 export const CONTACT_EMAIL = "contact@globalcomputingmachines.com";

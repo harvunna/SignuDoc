@@ -24,7 +24,7 @@ import { getInitials } from "@/lib/initials";
 type AppShellProps = {
   children: ReactNode;
   /**
-   * Signly plans: set while the site is paused (SIGNLY_SITE_STATUS). The
+   * GCM eSign plans: set while the site is paused (GCMESIGN_SITE_STATUS). The
    * billing link is passed only to administrators, who can act on it.
    */
   pausedNotice?: { billingUrl: string | null; isAdmin: boolean } | null;

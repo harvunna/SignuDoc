@@ -14,7 +14,7 @@ error codes are only ever added, never changed or removed.
 
 Anyone with an account makes their own keys under **Settings, My API keys**.
 An administrator's keys, and the list of every key on the install, are under
-**Settings, Organization, API keys**. (Signly change: SignuDoc lets only
+**Settings, Organization, API keys**. (GCM eSign change: SignuDoc lets only
 administrators have keys.)
 
 1. Give it a name that says which app uses it, such as "Billing app".
@@ -376,13 +376,13 @@ Every endpoint that returns an envelope returns the same object:
 - `files` gives the paths to download once there is something to download:
   the signed PDF once the envelope is completed, and the certificate of
   completion once it is completed, declined or voided.
-- `attachments` (Signly) lists the files signers uploaded in `attachment`
+- `attachments` (GCM eSign) lists the files signers uploaded in `attachment`
   fields, once they signed: `fieldId`, `signerId`, `fileName`,
   `contentType` (PDF, PNG or JPEG), `sizeBytes`, `sha256`, `submittedAt` and
   the `url` to download it with the same key. An attachment field is placed
   like any other field (`"type": "attachment"`) and can be optional; the
   signer uploads a file of up to 4 MB.
-- A signer's `inPerson` (Signly) is true for someone who signs on the
+- A signer's `inPerson` (GCM eSign) is true for someone who signs on the
   sender's device: they get no invitation or reminder by email, and the
   sender opens their session from the envelope's page in the web app. Set
   it with `"inPerson": true` on the signer when creating the envelope.

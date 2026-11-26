@@ -89,7 +89,7 @@ async function assertRoomForTemplate(
 
 type TemplateRow = {
   createdAt: number;
-  /** Signly: the files the template's PDF was joined from, or null. */
+  /** GCM eSign: the files the template's PDF was joined from, or null. */
   documents: unknown;
   fields: unknown;
   id: string;

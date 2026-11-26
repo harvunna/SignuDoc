@@ -199,7 +199,7 @@ type AccountLimit = {
  * any other failure the retry runs again and needs what it was given.
  */
 export function isKept(status: number) {
-  // Signly plans: a 402 (site paused, month's envelopes used up) passes
+  // GCM eSign plans: a 402 (site paused, month's envelopes used up) passes
   // once the plan allows it, so like a 429 it lets the key go.
   return status < 500 && status !== 429 && status !== 402;
 }

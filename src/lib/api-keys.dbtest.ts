@@ -231,7 +231,7 @@ test("a key stops working while its owner's account is being closed", async () =
   assert.equal(listed?.revokedAt, null);
 });
 
-// Signly change: SignuDoc lets only administrators have keys.
+// GCM eSign change: SignuDoc lets only administrators have keys.
 test("anyone can have keys of their own, and only an administrator reaches other people's", async () => {
   const member = await createUser("user");
   const otherMember = await createUser("user");

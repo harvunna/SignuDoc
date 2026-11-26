@@ -1,4 +1,4 @@
-// Signly: the documents an envelope is made of.
+// GCM eSign: the documents an envelope is made of.
 //
 // An envelope has one source PDF. When the sender uploads several files
 // they are joined into it (services/document-combine.ts), and the envelope
@@ -72,7 +72,7 @@ export function parseStoredDocuments(
 
 /**
  * The envelope's documents, always at least one: an envelope of one file
- * (or one from before Signly kept a list) is one document named by its
+ * (or one from before GCM eSign kept a list) is one document named by its
  * source file.
  */
 export function listEnvelopeDocuments(

@@ -15,7 +15,7 @@ const API_SIGNER_CORRECTION_LIMIT = {
   windowMs: 60 * 60 * 1000,
 };
 
-// Signly: corrects the name and/or email of a signer who has not signed or
+// GCM eSign: corrects the name and/or email of a signer who has not signed or
 // declined, on an envelope that is out for signature. Their old link stops
 // working; if it is their turn, a new invitation goes to the corrected
 // address. The same change as "Correct signer" on the envelope's page,

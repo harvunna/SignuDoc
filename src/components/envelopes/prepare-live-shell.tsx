@@ -234,7 +234,7 @@ const fieldTools: readonly FieldTool[] = [
     placeholderLabel: "Radio button",
     type: "radio",
   },
-  // Signly: a place where the signer uploads a file (a PDF or a picture)
+  // GCM eSign: a place where the signer uploads a file (a PDF or a picture)
   // while signing, such as a copy of an ID or a certificate.
   {
     defaultHeight: 0.045,
@@ -545,7 +545,7 @@ function PrepareLiveShellContent({
   const backHref = `/envelopes/${envelopeId}/signers`;
 
   const pageCount = record.pages.length;
-  // Signly: the documents of an envelope of several, to show where each
+  // GCM eSign: the documents of an envelope of several, to show where each
   // begins and to jump to it. Empty for one document.
   const documents =
     record.documents.length > 1 ? toDocumentViews(record.documents) : [];

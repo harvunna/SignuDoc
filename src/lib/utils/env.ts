@@ -17,6 +17,15 @@ export class MissingEnvError extends Error {
 
 const PLACEHOLDER_PREFIX = "replace-with-";
 
+/**
+ * GCM eSign's own settings: GCMESIGN_<NAME>. The names used before the
+ * rename, SIGNLY_<NAME>, still work when the new one is not set, so an
+ * install keeps its plan and its public site until its variables are moved.
+ */
+export function readSiteEnv(env: EnvSource, name: string): string | undefined {
+  return readEnv(env, `GCMESIGN_${name}`) ?? readEnv(env, `SIGNLY_${name}`);
+}
+
 // Values copied from .env.example and never filled in count as not set.
 export function readEnv(
   env: EnvSource,

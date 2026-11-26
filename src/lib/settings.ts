@@ -102,7 +102,7 @@ export type SetupRequiredDecision = {
   message: string;
 };
 
-/** Signly plans: the site has as many accounts as SIGNLY_MAX_USERS. */
+/** GCM eSign plans: the site has as many accounts as GCMESIGN_MAX_USERS. */
 export type UserLimitDecision = {
   allowed: false;
   code: "signup_user_limit";

@@ -174,7 +174,7 @@ type CreateDraftEnvelopeOptions = {
 
 type CreateDraftEnvelopeInput = {
   /**
-   * Signly: the files the envelope is made of, in order. One file is stored
+   * GCM eSign: the files the envelope is made of, in order. One file is stored
    * as it is; several are joined into one PDF (see document-combine.ts).
    */
   sourcePdf: SourcePdfInput | readonly SourcePdfInput[];
@@ -416,7 +416,7 @@ export type ReviewEnvelopeData = {
   signingProvider: { name: string } | null;
   copyRecipients: readonly CopyRecipientRecord[];
   disabledReason: string | null;
-  /** Signly: the documents, in order; more than one when several were uploaded. */
+  /** GCM eSign: the documents, in order; more than one when several were uploaded. */
   documents?: readonly EnvelopeDocumentView[];
   envelopeId: string;
   filename: string;
@@ -436,7 +436,7 @@ export type DraftSignerStepSigner = {
   name: string;
   order: number;
   requireEmailCode?: boolean;
-  /** Signly: signs on the sender's device. Set on the signers step only. */
+  /** GCM eSign: signs on the sender's device. Set on the signers step only. */
   inPerson?: boolean;
   /** A signer, or an approver who has no fields. */
   role: RecipientRole;
@@ -459,7 +459,7 @@ export type DraftSignerStepData = {
 
 export type PrepareEnvelopeData = {
   /**
-   * Signly: the documents the envelope is made of, in order, always at
+   * GCM eSign: the documents the envelope is made of, in order, always at
    * least one. Fields are placed on pages of the joined PDF; this says
    * which document each page belongs to.
    */
@@ -482,7 +482,7 @@ export type EnvelopeDetailSignerView = {
   metaLabel: string;
   name: string;
   order: number;
-  /** Signly: signs on the sender's device; never emailed a link. */
+  /** GCM eSign: signs on the sender's device; never emailed a link. */
   inPerson: boolean;
   /** An approver's "signed" is an approval and "declined" a rejection. */
   role: RecipientRole;
@@ -492,7 +492,7 @@ export type EnvelopeDetailSignerView = {
   step: number;
 };
 
-/** Signly: a file a signer attached, as the envelope's page lists it. */
+/** GCM eSign: a file a signer attached, as the envelope's page lists it. */
 export type EnvelopeDetailAttachment = {
   downloadUrl: string;
   fieldId: string;
@@ -521,7 +521,7 @@ export type EnvelopeDetailDeadline = {
 };
 
 export type EnvelopeDetailData = {
-  /** Signly: files signers attached, once they signed. */
+  /** GCM eSign: files signers attached, once they signed. */
   attachments: readonly EnvelopeDetailAttachment[];
   /** People who get a copy of the finished document without signing. */
   copyRecipients: readonly CopyRecipientRecord[];
@@ -1109,7 +1109,7 @@ export async function copyEnvelopeToDraft(
             signingStepOf(signer),
             // An approver stays an approver in the copy.
             signer.role ?? "signer",
-            // Signly: so does someone who signs in person.
+            // GCM eSign: so does someone who signs in person.
             checks.get(signer.id)?.inPerson ?? false,
           ],
         );
@@ -1948,7 +1948,7 @@ function buildTimelineDescription(event: AuditEventRecord): string {
         ? `Signed by ${targetLabel} (${signatureMeaningLabel(parseSignatureMeaning(event.metadata.part11.meaning)) ?? event.metadata.part11.meaning}, password given again)`
         : describeProviderSignature(event.metadata)
           ? `Signed by ${targetLabel} ${describeProviderSignature(event.metadata)!}`
-          : // Signly: signed on the sender's device, in a hosted session.
+          : // GCM eSign: signed on the sender's device, in a hosted session.
             event.metadata?.inPerson
             ? `Signed in person by ${targetLabel}, hosted by ${
                 typeof event.metadata.inPerson === "object" &&
@@ -2404,7 +2404,7 @@ export async function getEnvelopeDetailDataForUser(
   // Everyone whose turn it is. A reminder goes to each of them whose last
   // one is far enough back (reminders.ts), so the button works while any of
   // them can have one.
-  // Signly: not those who sign in person, who are never emailed.
+  // GCM eSign: not those who sign in person, who are never emailed.
   const waitingSigners = signers.filter(
     (signer) =>
       signer.status === "notified" &&
@@ -2908,7 +2908,7 @@ export async function sendDraftEnvelope(
     throw new EnvelopeMutationError("Only draft envelopes can be sent.", 409);
   }
 
-  // Signly plans: every way of sending (the web app, bulk send, templates,
+  // GCM eSign plans: every way of sending (the web app, bulk send, templates,
   // the API) ends here, so this is where a paused site or a month's limit
   // stops a send. Asked first so the sender hears it before anything else;
   // the place in the month is taken under the send's lock further down.
@@ -3139,7 +3139,7 @@ export async function sendDraftEnvelope(
     );
   }
 
-  // Signly: signers who sign in person on the sender's device get no
+  // GCM eSign: signers who sign in person on the sender's device get no
   // invitation; the sender opens their session from the envelope's page.
   const inPersonSignerIds = new Set(
     [...(await listSignerCheckSettings(envelopeId, database)).entries()]
@@ -3411,7 +3411,7 @@ export async function sendDraftEnvelope(
 
   if (delivery === "embedded" || !invitedFirstSigner) {
     // No invitation: the app asks the API for a link for each signer
-    // whose turn it is (see embedding.ts), or (Signly) everyone in the
+    // whose turn it is (see embedding.ts), or (GCM eSign) everyone in the
     // first step signs in person. The envelope is out for signature now,
     // so its envelope.sent webhook can go.
     await releaseSentWebhook(envelopeId, database).catch((error: unknown) => {
@@ -3921,7 +3921,7 @@ export async function correctSentEnvelopeSigner(
     let tokenHash: string | null = null;
     let tokenExpiresAt: number | null = null;
     let lastNotifiedAt = signer.lastNotifiedAt;
-    // Signly: a signer who signs in person is not emailed. Their link is
+    // GCM eSign: a signer who signs in person is not emailed. Their link is
     // still replaced, so a session the sender opened for the previous
     // person stops working; the sender opens a new one.
     const invitationNeeded = signer.status === "notified" && !signer.inPerson;
@@ -4000,7 +4000,7 @@ export async function correctSentEnvelopeSigner(
       [nowUnixTimestamp, envelopeId],
     );
 
-    // Signly: files the previous person uploaded are theirs, not the
+    // GCM eSign: files the previous person uploaded are theirs, not the
     // corrected signer's. They are queued for deletion with this change.
     await discardSignerAttachmentUploads(envelopeId, signerId, [], tx);
 
