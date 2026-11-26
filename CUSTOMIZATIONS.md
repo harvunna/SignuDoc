@@ -328,6 +328,23 @@ for the usage report.
   from `src/lib/marketing-metadata.ts` and the pages.
 - Tests: `src/lib/public-site.test.ts`.
 
+### 9. Text tags and anchors
+
+- `POST /api/v1/envelopes` accepts `"textTags": true` (fields come from
+  `[[type:signer]]` tags typed in the PDFs, which are covered with white) and
+  a field `anchor` (`text`, `occurrence`, `position`, `offsetX/Y`) in place of
+  `page`/`x`/`y`. `fields` may be empty with `textTags`. See docs/api.md
+  "Placing fields by text".
+- Code: `src/lib/api/text-tags.ts` (parsing, searching, covering),
+  `src/lib/api/text-placement.ts` (turns them into fields),
+  `src/lib/api/envelopes.ts` (schema, runs it before the draft is made).
+  Everything after that sees ordinary fields.
+- Reads text with pdf.js on the server: `next.config.ts` lists `pdfjs-dist`
+  in `serverExternalPackages` and its files in `outputFileTracingIncludes`.
+  If an upstream update changes the Next.js config, keep both.
+- Tests: `src/lib/api/text-tags.test.ts`.
+- Risk: the tag is hidden, not removed, from the PDF's text.
+
 ## Settings outside the code
 
 These live in Vercel, Resend, Cloudflare and the app, not in this
@@ -380,3 +397,9 @@ repository. Recreate them if the install is ever rebuilt.
       the home page, signed in goes to the dashboard; `/robots.txt` lists the
       sitemap; `/sitemap.xml` lists four pages; the three landing pages open.
       Where it is not set: those pages answer 404 and robots disallows all.
+
+- [ ] Text tags: create an envelope through Swagger (`/api/v1`) with a PDF
+      that has `[[signature:client]]` typed in it and `"textTags": true`,
+      `"fields": []`; the signing page shows a signature field where the tag
+      was and no tag text. A field with `"anchor": {"text": "..."}` lands
+      beside those words. A tag naming an unknown signer answers 400.

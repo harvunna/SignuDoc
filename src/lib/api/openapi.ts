@@ -127,9 +127,10 @@ export function buildOpenApiDocument(
               type: "array",
             },
             fields: {
+              description:
+                "May be empty when textTags is true and the PDFs carry [[type:signer]] tags.",
               items: { $ref: "#/components/schemas/Field" },
               maxItems: 500,
-              minItems: 1,
               type: "array",
             },
             filename: {
@@ -179,6 +180,11 @@ export function buildOpenApiDocument(
               maxItems: maxSigners,
               minItems: 1,
               type: "array",
+            },
+            textTags: {
+              description:
+                "Read [[type:signer]] tags in the PDFs as fields, e.g. [[signature:client]], [[date:client:optional]], [[text:client:label=Company]], [[dropdown:client:options=A|B]], [[radio:client:group=plan:label=Basic]]. The tag is covered with white. Tags are added to any fields given.",
+              type: "boolean",
             },
             title: titleSchema,
             uploadId: {
@@ -326,8 +332,35 @@ export function buildOpenApiDocument(
         },
         Field: {
           description:
-            "Position and size are fractions of the page (0 to 1), measured from its top left corner.",
+            "Position and size are fractions of the page (0 to 1), measured from its top left corner. Or give an anchor and no page, x or y: the field is placed by the words it names.",
           properties: {
+            anchor: {
+              description:
+                "Place the field by text in the document. width and height default by type.",
+              properties: {
+                occurrence: {
+                  default: 1,
+                  description: "Which match to use, counting from 1.",
+                  minimum: 1,
+                  type: "integer",
+                },
+                offsetX: { maximum: 1, minimum: -1, type: "number" },
+                offsetY: { maximum: 1, minimum: -1, type: "number" },
+                position: {
+                  default: "right",
+                  enum: ["right", "below", "over"],
+                  type: "string",
+                },
+                text: {
+                  description:
+                    "The words to find. Capitals and spacing do not matter.",
+                  maxLength: 200,
+                  type: "string",
+                },
+              },
+              required: ["text"],
+              type: "object",
+            },
             document: {
               description:
                 "Which document (1 for the first) page counts in. Left out, page counts across all the documents of the envelope together.",
@@ -362,7 +395,7 @@ export function buildOpenApiDocument(
             x: { maximum: 1, minimum: 0, type: "number" },
             y: { maximum: 1, minimum: 0, type: "number" },
           },
-          required: ["signer", "type", "page", "x", "y", "width", "height"],
+          required: ["signer", "type"],
           type: "object",
         },
         SendOptions: {
