@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { parseApiKeyScope } from "@/lib/api-keys";
 import { requireVerifiedSenderSession } from "@/lib/auth/route-session";
+import { parseRedirectUris } from "@/lib/oauth-authorization";
 import {
   createOAuthClient,
   listOAuthClientsForUser,
@@ -70,10 +71,18 @@ export async function POST(request: Request) {
   const parsed: unknown = await request.json().catch(() => null);
   const body =
     typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
-      ? (parsed as { name?: unknown; scope?: unknown })
+      ? (parsed as {
+          name?: unknown;
+          redirectUris?: unknown;
+          scope?: unknown;
+          type?: unknown;
+        })
       : {};
   const name = parseOAuthClientName(body.name);
   const scope = parseApiKeyScope(body.scope);
+  const isPublic = body.type === "public";
+  const redirectUris =
+    body.redirectUris === undefined ? [] : parseRedirectUris(body.redirectUris);
 
   if (!name || !scope) {
     return NextResponse.json(
@@ -81,6 +90,34 @@ export async function POST(request: Request) {
         error:
           "Give the client a name of up to 80 characters and read or write access.",
       },
+      { headers: noStore, status: 400 },
+    );
+  }
+
+  if (
+    body.type !== undefined &&
+    body.type !== "public" &&
+    body.type !== "confidential"
+  ) {
+    return NextResponse.json(
+      { error: "The client type is confidential or public." },
+      { headers: noStore, status: 400 },
+    );
+  }
+
+  if (redirectUris === null) {
+    return NextResponse.json(
+      {
+        error:
+          "Redirect addresses must be https (or http on localhost, or an app's own scheme), have no #, and be at most 5.",
+      },
+      { headers: noStore, status: 400 },
+    );
+  }
+
+  if (isPublic && redirectUris.length === 0) {
+    return NextResponse.json(
+      { error: "A public client needs at least one redirect address." },
       { headers: noStore, status: 400 },
     );
   }
@@ -93,7 +130,7 @@ export async function POST(request: Request) {
         userAgent: getRequestUserAgent(request.headers),
         userId: session.user.id,
       },
-      { name, scope },
+      { isPublic, name, redirectUris, scope },
     );
 
     return NextResponse.json(created, { headers: noStore, status: 201 });

@@ -93,6 +93,7 @@ async function createContext(idempotencyKey: string) {
   return {
     actor: {
       apiKeyId: summary.id,
+      credentialId: summary.id,
       email,
       ipAddress: null,
       name: "Route test",
@@ -130,7 +131,7 @@ test("a request whose envelope could not be noted keeps its key, so a retry cann
   assert.deepEqual(
     await claimIdempotencyKey(
       {
-        apiKeyId: context.actor.apiKeyId,
+        apiKeyId: context.actor.credentialId,
         key,
         requestHash: hashRequest("POST /api/v1/envelopes", body),
       },
@@ -213,7 +214,7 @@ test(
     assert.deepEqual(
       await claimIdempotencyKey(
         {
-          apiKeyId: context.actor.apiKeyId,
+          apiKeyId: context.actor.credentialId,
           key,
           requestHash: hashRequest("POST /api/v1/envelopes", body),
         },
@@ -287,7 +288,7 @@ test("a retry that finds the envelope gone does not replace what the first reque
   assert.deepEqual(
     await claimIdempotencyKey(
       {
-        apiKeyId: context.actor.apiKeyId,
+        apiKeyId: context.actor.credentialId,
         key,
         requestHash: hashRequest("POST /api/v1/envelopes", body),
       },
@@ -310,7 +311,7 @@ test("a request that fails before making anything lets its key go", async () => 
 
   const claim = await claimIdempotencyKey(
     {
-      apiKeyId: context.actor.apiKeyId,
+      apiKeyId: context.actor.credentialId,
       key,
       requestHash: hashRequest("POST /api/v1/envelopes", body),
     },

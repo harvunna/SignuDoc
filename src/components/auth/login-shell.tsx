@@ -49,6 +49,8 @@ type ForgotPasswordFormErrors = Partial<
 >;
 
 type LoginShellProps = {
+  /** Where to go once signed in, instead of the dashboard (see next-path.ts). */
+  nextPath?: string | null;
   /** "on", "off", or "fallback": off, but a few addresses may still use one. */
   passwordSignIn?: "fallback" | "off" | "on";
   resetError?: string | null;
@@ -122,6 +124,7 @@ export function LoginShell(props: LoginShellProps) {
 }
 
 function LiveLoginShell({
+  nextPath = null,
   passwordSignIn = "on",
   resetError = null,
   resetToken = null,
@@ -290,7 +293,7 @@ function LiveLoginShell({
       return;
     }
 
-    router.replace("/dashboard");
+    router.replace(nextPath ?? "/dashboard");
   }
 
   async function handleForgotPasswordSubmit(event: FormEvent<HTMLFormElement>) {
@@ -394,7 +397,7 @@ function LiveLoginShell({
           setValues((currentValues) => ({ ...currentValues, password: "" }));
           setBannerMessage(message);
         }}
-        onSignedIn={() => router.replace("/dashboard")}
+        onSignedIn={() => router.replace(nextPath ?? "/dashboard")}
       />
     );
   }
@@ -421,6 +424,7 @@ function LiveLoginShell({
 
           {sso ? (
             <SsoButton
+              nextPath={nextPath}
               onError={setBannerMessage}
               sso={sso}
               variant={showPasswordForm ? "secondary" : "primary"}

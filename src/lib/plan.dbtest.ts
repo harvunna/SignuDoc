@@ -145,6 +145,7 @@ async function createActor(): Promise<ApiActor> {
 
   return {
     apiKeyId: summary.id,
+    credentialId: summary.id,
     email,
     ipAddress: "203.0.113.7",
     name: "Sam Sender",

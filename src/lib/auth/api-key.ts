@@ -54,7 +54,11 @@ export async function requireApiKey(
   }
 
   const decision = await consumeRateLimit({
-    key: `api-key:${principal.apiKey.id}`,
+    // An app with many people behind it is counted per person, so one
+    // busy person does not use up the allowance of all the others.
+    key: principal.oauth
+      ? `oauth:${principal.apiKey.id}:${principal.user.id}`
+      : `api-key:${principal.apiKey.id}`,
     limit: API_KEY_RATE_LIMIT,
     windowMs: API_KEY_RATE_WINDOW_MS,
   });

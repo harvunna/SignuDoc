@@ -27,6 +27,8 @@ export const OAUTH_CLIENT_ID_PREFIX = "gcmc_";
 export const OAUTH_CLIENT_SECRET_PREFIX = "gcms_";
 export const OAUTH_TOKEN_PREFIX = "sdo_";
 export const OAUTH_TOKEN_TTL_SECONDS = 60 * 60;
+export const OAUTH_REFRESH_TOKEN_PREFIX = "sdr_";
+export const OAUTH_REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
 export const MAX_OAUTH_CLIENTS_PER_USER = 10;
 
 const LAST_USED_WRITE_INTERVAL_SECONDS = 60;
@@ -45,11 +47,15 @@ export type OAuthClientSummary = {
   clientId: string;
   createdAt: number;
   id: string;
+  /** An app that cannot keep a secret: no secret, PKCE required. */
+  isPublic: boolean;
   lastUsedAt: number | null;
   name: string;
   ownerClosing: boolean;
   ownerEmail: string;
   ownerName: string;
+  /** Where the authorization code flow may send people back to. */
+  redirectUris: string[];
   revokedAt: number | null;
   scope: ApiKeyScope;
   userId: string;
@@ -68,6 +74,8 @@ const SUMMARY_COLUMNS = `
   c.name,
   c.client_id AS "clientId",
   c.scope,
+  c.is_public AS "isPublic",
+  c.redirect_uris AS "redirectUris",
   c.created_at AS "createdAt",
   c.last_used_at AS "lastUsedAt",
   c.revoked_at AS "revokedAt",
@@ -96,6 +104,14 @@ export function generateOAuthClientSecret(): string {
 
 export function generateOAuthToken(): string {
   return `${OAUTH_TOKEN_PREFIX}${randomBytes(32).toString("base64url")}`;
+}
+
+export function generateOAuthRefreshToken(): string {
+  return `${OAUTH_REFRESH_TOKEN_PREFIX}${randomBytes(32).toString("base64url")}`;
+}
+
+export function looksLikeOAuthRefreshToken(value: string): boolean {
+  return /^sdr_[A-Za-z0-9_-]{43}$/.test(value);
 }
 
 export function looksLikeOAuthToken(value: string): boolean {
@@ -156,11 +172,19 @@ async function getClientSummary(
 /** Registers a client for `actor`. The secret is returned once, never stored. */
 export async function createOAuthClient(
   actor: Actor,
-  input: { name: string; scope: ApiKeyScope },
+  input: {
+    isPublic?: boolean;
+    name: string;
+    redirectUris?: string[];
+    scope: ApiKeyScope;
+  },
   database: DbPool = getDb(),
-): Promise<{ clientSecret: string; summary: OAuthClientSummary }> {
+): Promise<{ clientSecret: string | null; summary: OAuthClientSummary }> {
+  const isPublic = input.isPublic === true;
+  const redirectUris = input.redirectUris ?? [];
   const clientId = generateOAuthClientId();
-  const clientSecret = generateOAuthClientSecret();
+  // A public client has no secret to keep.
+  const clientSecret = isPublic ? null : generateOAuthClientSecret();
   const createdAt = nowInSeconds();
   const id = randomUUID();
 
@@ -197,17 +221,20 @@ export async function createOAuthClient(
     await tx.query(
       `
         INSERT INTO oauth_clients (
-          id, user_id, name, client_id, secret_hash, scope, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+          id, user_id, name, client_id, secret_hash, scope, created_at,
+          redirect_uris, is_public
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
       `,
       [
         id,
         actor.userId,
         input.name,
         clientId,
-        hashOAuthSecret(clientSecret),
+        clientSecret === null ? null : hashOAuthSecret(clientSecret),
         input.scope,
         createdAt,
+        JSON.stringify(redirectUris),
+        isPublic,
       ],
     );
     await recordSystemAuditEvent(
@@ -221,6 +248,8 @@ export async function createOAuthClient(
           clientId,
           name: input.name,
           oauthClientId: id,
+          public: isPublic,
+          redirectUris,
           scope: input.scope,
         },
         userAgent: actor.userAgent ?? null,
@@ -323,9 +352,7 @@ export async function revokeOAuthClient(
       revokedAt,
       oauthClientId,
     ]);
-    await tx.query(`DELETE FROM oauth_tokens WHERE oauth_client_id = $1`, [
-      oauthClientId,
-    ]);
+    await deleteClientGrants(tx, oauthClientId);
     await recordSystemAuditEvent(
       {
         actorEmail: actor.email,
@@ -353,6 +380,21 @@ export async function revokeOAuthClient(
   }
 
   return summary;
+}
+
+/** Every token and code a client was given. */
+async function deleteClientGrants(tx: DbExecutor, oauthClientId: string) {
+  await tx.query(`DELETE FROM oauth_tokens WHERE oauth_client_id = $1`, [
+    oauthClientId,
+  ]);
+  await tx.query(
+    `DELETE FROM oauth_refresh_tokens WHERE oauth_client_id = $1`,
+    [oauthClientId],
+  );
+  await tx.query(
+    `DELETE FROM oauth_authorization_codes WHERE oauth_client_id = $1`,
+    [oauthClientId],
+  );
 }
 
 /** Revokes every client an account has, in the caller's transaction. */
@@ -383,7 +425,24 @@ export async function revokeOAuthClientsForUser(
   await tx.query(
     `
       DELETE FROM oauth_tokens
-      WHERE oauth_client_id IN (SELECT id FROM oauth_clients WHERE user_id = $1)
+      WHERE user_id = $1
+        OR oauth_client_id IN (SELECT id FROM oauth_clients WHERE user_id = $1)
+    `,
+    [userId],
+  );
+  await tx.query(
+    `
+      DELETE FROM oauth_refresh_tokens
+      WHERE user_id = $1
+        OR oauth_client_id IN (SELECT id FROM oauth_clients WHERE user_id = $1)
+    `,
+    [userId],
+  );
+  await tx.query(
+    `
+      DELETE FROM oauth_authorization_codes
+      WHERE user_id = $1
+        OR oauth_client_id IN (SELECT id FROM oauth_clients WHERE user_id = $1)
     `,
     [userId],
   );
@@ -444,6 +503,7 @@ export async function authenticateOAuthClient(
       FROM oauth_clients c
       JOIN "user" u ON u.id = c.user_id
       WHERE c.client_id = $1
+        AND c.is_public = false
         AND c.revoked_at IS NULL
         AND NOT EXISTS (
           SELECT 1 FROM account_closure_requests a WHERE a.user_id = u.id
@@ -473,14 +533,30 @@ export async function authenticateOAuthClient(
   };
 }
 
-/** Makes a token for an authenticated client. The token is never stored. */
+export type OAuthTokenSet = {
+  accessToken: string;
+  expiresIn: number;
+  /** Only for the authorization code flow. */
+  refreshToken?: string;
+  scope: ApiKeyScope;
+};
+
+/**
+ * Makes a token for a client. Tokens are never stored, only their hashes.
+ * `subject` is whom the token acts as: left out, the client's owner (client
+ * credentials). With `refresh`, a refresh token joins the chain `familyId`
+ * (or a new one).
+ */
 export async function issueOAuthToken(
-  client: OAuthClientIdentity,
+  client: { id: string; userId: string },
   scope: ApiKeyScope,
   database: DbExecutor = getDb(),
   now: number = nowInSeconds(),
-): Promise<{ accessToken: string; expiresIn: number; scope: ApiKeyScope }> {
+  subject?: { familyId?: string; refresh?: boolean; userId: string },
+): Promise<OAuthTokenSet> {
   const accessToken = generateOAuthToken();
+  const userId = subject?.userId ?? client.userId;
+  const familyId = subject?.refresh ? (subject.familyId ?? randomUUID()) : null;
 
   // Expired tokens of this client are cleared as new ones are made.
   await database.query(
@@ -488,10 +564,16 @@ export async function issueOAuthToken(
     [client.id, now],
   );
   await database.query(
+    `DELETE FROM oauth_refresh_tokens
+     WHERE oauth_client_id = $1 AND expires_at <= $2`,
+    [client.id, now],
+  );
+  await database.query(
     `
       INSERT INTO oauth_tokens (
-        token_hash, oauth_client_id, scope, created_at, expires_at
-      ) VALUES ($1, $2, $3, $4, $5)
+        token_hash, oauth_client_id, scope, created_at, expires_at,
+        user_id, family_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
     `,
     [
       hashOAuthSecret(accessToken),
@@ -499,8 +581,34 @@ export async function issueOAuthToken(
       scope,
       now,
       now + OAUTH_TOKEN_TTL_SECONDS,
+      userId,
+      familyId,
     ],
   );
+
+  let refreshToken: string | undefined;
+
+  if (familyId) {
+    refreshToken = generateOAuthRefreshToken();
+    await database.query(
+      `
+        INSERT INTO oauth_refresh_tokens (
+          token_hash, oauth_client_id, user_id, family_id, scope,
+          created_at, expires_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `,
+      [
+        hashOAuthSecret(refreshToken),
+        client.id,
+        userId,
+        familyId,
+        scope,
+        now,
+        now + OAUTH_REFRESH_TOKEN_TTL_SECONDS,
+      ],
+    );
+  }
+
   await database
     .query(`UPDATE oauth_clients SET last_used_at = $1 WHERE id = $2`, [
       now,
@@ -510,7 +618,77 @@ export async function issueOAuthToken(
       console.error("Recording when an OAuth client was used failed:", error);
     });
 
-  return { accessToken, expiresIn: OAUTH_TOKEN_TTL_SECONDS, scope };
+  return {
+    accessToken,
+    expiresIn: OAUTH_TOKEN_TTL_SECONDS,
+    ...(refreshToken ? { refreshToken } : {}),
+    scope,
+  };
+}
+
+export type OAuthClientInfo = {
+  clientId: string;
+  id: string;
+  isPublic: boolean;
+  name: string;
+  ownerName: string;
+  redirectUris: string[];
+  scope: ApiKeyScope;
+  userId: string;
+};
+
+/**
+ * A client by its public id, if it can still be used: not revoked, and its
+ * owner's email verified and account not closing. For the authorization
+ * code flow, where no secret is checked yet.
+ */
+export async function findOAuthClient(
+  clientId: string,
+  database: DbExecutor = getDb(),
+): Promise<OAuthClientInfo | null> {
+  return queryOne<OAuthClientInfo>(
+    database,
+    `
+      SELECT
+        c.id,
+        c.client_id AS "clientId",
+        c.name,
+        c.scope,
+        c.is_public AS "isPublic",
+        c.redirect_uris AS "redirectUris",
+        c.user_id AS "userId",
+        u.name AS "ownerName"
+      FROM oauth_clients c
+      JOIN "user" u ON u.id = c.user_id
+      WHERE c.client_id = $1
+        AND c.revoked_at IS NULL
+        AND u."emailVerified" = true
+        AND NOT EXISTS (
+          SELECT 1 FROM account_closure_requests a WHERE a.user_id = u.id
+        )
+    `,
+    [clientId],
+  );
+}
+
+/** Whether an account may still use the API: verified and not closing. */
+export async function accountMayUseApi(
+  userId: string,
+  database: DbExecutor = getDb(),
+): Promise<boolean> {
+  const row = await queryOne<{ ok: boolean }>(
+    database,
+    `
+      SELECT u."emailVerified" = true AND NOT EXISTS (
+        SELECT 1 FROM account_closure_requests a WHERE a.user_id = u.id
+      ) AS ok
+      FROM "user" u
+      WHERE u.id = $1
+    `,
+    [userId],
+  );
+
+  return row?.ok === true;
 }
 
 /**
@@ -552,7 +730,7 @@ export async function authenticateOAuthToken(
         u."emailVerified" AS "emailVerified"
       FROM oauth_tokens t
       JOIN oauth_clients c ON c.id = t.oauth_client_id
-      JOIN "user" u ON u.id = c.user_id
+      JOIN "user" u ON u.id = t.user_id
       WHERE t.token_hash = $1
         AND t.expires_at > $2
         AND c.revoked_at IS NULL
@@ -587,6 +765,7 @@ export async function authenticateOAuthToken(
 
   return {
     apiKey: { id: row.id, name: row.name, scope: row.scope },
+    oauth: true,
     user: {
       email: row.email,
       id: row.userId,

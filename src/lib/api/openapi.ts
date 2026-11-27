@@ -109,6 +109,11 @@ export function buildOpenApiDocument(
   serverUrl: string,
   maxSigners: number = getMaxSignersPerEnvelope(),
 ) {
+  const oauthScopes = {
+    read: "Look at envelopes and templates.",
+    write: "Also create, send and void envelopes. Includes read.",
+  };
+
   return {
     components: {
       schemas: {
@@ -547,13 +552,19 @@ export function buildOpenApiDocument(
         },
         oauth2: {
           description:
-            "OAuth 2.0 client credentials. Register a client in Settings, My OAuth clients, trade its id and secret at the token URL for an access token that lasts an hour, and send it as a Bearer token. It acts as the person who made the client.",
+            "OAuth 2.0. Register a client in Settings, My OAuth clients. An app acting as its own account trades the client id and secret for an access token (client credentials). An app acting for other people sends them to the authorization URL, trades the code (with PKCE) for tokens, and renews them with the refresh token. Access tokens last an hour and are sent as a Bearer token.",
           flows: {
+            authorizationCode: {
+              authorizationUrl: new URL(
+                "../../oauth/authorize",
+                `${serverUrl}/`,
+              ).toString(),
+              refreshUrl: new URL("../oauth/token", `${serverUrl}/`).toString(),
+              scopes: oauthScopes,
+              tokenUrl: new URL("../oauth/token", `${serverUrl}/`).toString(),
+            },
             clientCredentials: {
-              scopes: {
-                read: "Look at envelopes and templates.",
-                write: "Also create, send and void envelopes. Includes read.",
-              },
+              scopes: oauthScopes,
               tokenUrl: new URL("../oauth/token", `${serverUrl}/`).toString(),
             },
           },

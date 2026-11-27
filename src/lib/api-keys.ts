@@ -64,6 +64,12 @@ export type ApiKeySummary = {
 };
 
 export type ApiKeyPrincipal = {
+  /**
+   * Set when the caller came in with an OAuth access token, not an API key.
+   * Its `apiKey.id` is then the OAuth client's, which is not a row of
+   * api_keys.
+   */
+  oauth?: boolean;
   apiKey: {
     id: string;
     name: string;

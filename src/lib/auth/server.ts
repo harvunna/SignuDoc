@@ -618,7 +618,9 @@ export function getAuthSession() {
  * sent on to their documents. This asks the auth server, so a cookie left
  * over from a session that no longer exists does not count as signed in.
  */
-export async function redirectIfSignedIn(): Promise<void> {
+export async function redirectIfSignedIn(
+  to: string = "/dashboard",
+): Promise<void> {
   let signedIn = false;
 
   try {
@@ -635,6 +637,6 @@ export async function redirectIfSignedIn(): Promise<void> {
   }
 
   if (signedIn) {
-    redirect("/dashboard");
+    redirect(to);
   }
 }

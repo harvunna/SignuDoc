@@ -103,7 +103,7 @@ export async function POST(request: Request, context: Context) {
           try {
             await markEnvelopeAsApiMade(
               draft.envelopeId,
-              api.actor.apiKeyId,
+              api.actor.credentialId,
               body.data.metadata ?? null,
             );
 

@@ -27,6 +27,8 @@ const EVENT_LABELS: Record<SystemAuditEvent["event"], string> = {
   api_key_revoked: "API key revoked",
   oauth_client_created: "OAuth client created",
   oauth_client_revoked: "OAuth client revoked",
+  oauth_authorization_granted: "App allowed to act for someone",
+  oauth_grant_revoked: "App access taken back",
   email_domain_changed: "Email domain changed",
   embed_origin_added: "Site allowed to embed signing",
   embed_origin_removed: "Site no longer allowed to embed signing",
@@ -125,6 +127,8 @@ function describeEvent(event: SystemAuditEvent): string {
         .join(", ");
     case "oauth_client_created":
     case "oauth_client_revoked":
+    case "oauth_authorization_granted":
+    case "oauth_grant_revoked":
       return [
         typeof metadata.name === "string" ? metadata.name : null,
         typeof metadata.clientId === "string" ? metadata.clientId : null,
