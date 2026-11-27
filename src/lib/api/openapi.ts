@@ -579,6 +579,24 @@ export function buildOpenApiDocument(
       version: "1",
     },
     openapi: "3.1.0",
+    tags: [
+      {
+        name: "Envelopes",
+        description: "Create, send, track, and manage envelopes.",
+      },
+      {
+        name: "Templates",
+        description: "Create envelopes from saved templates.",
+      },
+      {
+        name: "Webhooks",
+        description: "Inspect webhook deliveries for missed events.",
+      },
+      {
+        name: "Uploads",
+        description: "Get signed URLs for large PDF uploads.",
+      },
+    ],
     paths: {
       "/envelopes": {
         get: {
